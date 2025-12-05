@@ -1,5 +1,10 @@
 import sys
-sys.path.append("../../dynamic-tokenization")
+import os
+
+project_root = os.path.expanduser(
+    "~/MASTER/WiSe25/Lab Rotation/dynamic-tokenization"
+)
+sys.path.append(project_root)
 
 
 from tokenizations.dynamic_bpe import Dynamic_BPE
