@@ -30,7 +30,7 @@ cd ~/MASTER/WiSe25/Lab\ Rotation/latxa_tokenizer_eval
 echo "Running python experiment..."
 
 # === 4. RUN YOUR PYTHON SCRIPT ===
-python scripts/test_cluster.py
+python notebooks/dynamic_tokenization_and_latxa.ipynb
 
 echo "Job finished."
 
