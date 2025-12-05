@@ -1,3 +1,7 @@
+import sys
+sys.path.append("../../dynamic-tokenization")
+
+
 from tokenizations.dynamic_bpe import Dynamic_BPE
 from transformers import AutoTokenizer, AutoModel, AutoModelForCausalLM
 import torch
@@ -9,10 +13,6 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import numpy as np
 from collections import OrderedDict
-
-
-import sys
-sys.path.append("../../dynamic-tokenization")
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
