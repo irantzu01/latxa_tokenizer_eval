@@ -14,9 +14,11 @@ echo "Starting job $SLURM_JOB_ID on node $(hostname)"
 
 # === 1. LOAD MODULES (MAY VARY BY CLUSTER) ===
 module purge
+module load gcc/13.2.0
+module load python/3.11.9
 
 # === 2. ACTIVATE YOUR VIRTUAL ENVIRONMENT ===
-source ~/MASTER/WiSe25/Lab\ Rotation/dynamic-tokenization/dynamic_tokenization_311/bin/activate
+source ~/MASTER/WiSe25/Lab\ Rotation/dynamic-tokenization/venv311/bin/activate
 
 echo "Environment loaded."
 python --version
