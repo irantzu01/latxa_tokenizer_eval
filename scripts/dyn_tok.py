@@ -116,11 +116,13 @@ print("Average tokens per word and per sentence:")
 print("Latxa:", avg_latxa)
 print("Dynamic BPE:", avg_dyn)
 
+coverage_latxa = word_coverage(raw_examples, encoded_latxa)
+coverage_dyn = word_coverage(raw_examples, encoded_dynamic)
+print("Word coverage in latxa:", coverage_latxa)
+print("Word coverage in dynamic BPE:", coverage_dyn)
+
+
 # overlap = token_set_overlap(encoded_latxa, encoded_dynamic)
-
-# coverage_latxa = word_coverage(raw_examples, encoded_latxa)
-# coverage_dyn = word_coverage(raw_examples, encoded_dynamic)
-
 
 
     
