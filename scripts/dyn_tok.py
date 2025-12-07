@@ -117,8 +117,8 @@ encoded_latxa_tokens = [latxa_tokenizer.convert_ids_to_tokens(enc["input_ids"]) 
 # print("Latxa:", avg_latxa)
 # print("Dynamic BPE:", avg_dyn)
 
-coverage_latxa = word_coverage_latxa(raw_examples, encoded_latxa)
-coverage_dyn = word_coverage_dynamic(raw_examples, encoded_dynamic)
+coverage_latxa = word_coverage_latxa(encoded_latxa, raw_examples, max_check=100000)
+coverage_dyn = word_coverage_dynamic(encoded_dynamic, raw_examples, max_check=100000)
 print("Word coverage in latxa:", coverage_latxa)
 print("Word coverage in dynamic BPE:", coverage_dyn)
 
