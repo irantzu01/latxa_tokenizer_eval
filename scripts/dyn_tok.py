@@ -76,6 +76,19 @@ print("Number of questions:", len(encoded_candidates))
 print(encoded_candidates[0:2])
 
 # Get dynamic tokenization
+encoded_candidates_dynamic = []
+BATCH_SIZE = 500
+for i in tqdm(range(0, len(encoded_candidates), BATCH_SIZE)):
+    batch = encoded_candidates[i : i + BATCH_SIZE]
+    dynamic_tokens, attr2, attr3, attr4 = dynamic_bpe.tokenize_batch(
+        batch_examples=batch,
+        max_nr_merges=10,
+        mlm=True
+    )
+    encoded_candidates_dynamic.extend(dynamic_tokens)
+print("Dynamic tokenization completed.")
+print("Number of questions (dynamic):", len(encoded_candidates_dynamic))
+print(encoded_candidates_dynamic[0:2])
 
 
 
