@@ -108,8 +108,9 @@ from simple_tokenization_evaluation import (
     word_coverage,
 )
 
+encoded_latxa_tokens = [latxa_tokenizer.convert_ids_to_tokens(enc["input_ids"]) for enc in encoded_latxa]
 
-avg_latxa = avg_tokens_per_word(raw_examples, encoded_latxa)
+avg_latxa = avg_tokens_per_word([ex["text"] for ex in raw_examples], encoded_latxa_tokens)
 avg_dyn = avg_tokens_per_word(raw_examples, encoded_dynamic)
 print("Average tokens per word and per sentence:")
 print("Latxa:", avg_latxa)
