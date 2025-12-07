@@ -10,12 +10,12 @@ def flatten(list_of_lists):
 
 
 # 1. Average tokens per word and per sentence
-def avg_tokens_per_word(sentences, token_lists):
+def avg_tokens_per_word(raw_examples, token_lists):
     total_tokens = sum(len(toks) for toks in token_lists)
-    total_words = sum(len(sent.split()) for sent in sentences)
+    total_words = sum(len(ex["text"].split()) for ex in raw_examples)
 
     avg_word = total_tokens / total_words
-    avg_sentence = total_tokens / len(sentences)
+    avg_sentence = total_tokens / len(raw_examples)
 
     return avg_word, avg_sentence
 
