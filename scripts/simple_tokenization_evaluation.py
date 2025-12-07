@@ -50,18 +50,27 @@ def token_set_overlap(token_lists1, token_lists2):
 
 
 # 4. word coverage
-def word_coverage(sentences, token_lists):
+def word_coverage(raw_examples, token_lists):
+    """
+    Computes average number of words not covered by the tokenization.
+    
+    raw_examples: list of dicts, each {"text": "..."}
+    token_lists: list of lists of token strings
+    """
     uncovered_counts = []
 
-    for sent, tokens in zip(sentences, token_lists):
+    for ex, tokens in zip(raw_examples, token_lists):
+        sent = ex["text"]  # extract the string
         words = sent.split()
-        joined = "".join(tok.lstrip("Ġ") for tok in tokens)
+        joined = "".join(tok.lstrip("Ġ") for tok in tokens)  # remove space marker
 
+        # count words not fully contained in joined tokens
         uncovered = [w for w in words if w not in joined]
         uncovered_counts.append(len(uncovered))
 
-    avg_uncovered = sum(uncovered_counts) / len(sentences)
+    avg_uncovered = sum(uncovered_counts) / len(raw_examples)
     return avg_uncovered
+
 
 
 # 5. Most common tokens
