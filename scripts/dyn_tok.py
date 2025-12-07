@@ -105,7 +105,8 @@ from simple_tokenization_evaluation import (
     token_length_distribution,
     plot_token_length_distribution,
     token_set_overlap,
-    word_coverage,
+    word_coverage_latxa,
+    word_coverage_dynamic
 )
 
 encoded_latxa_tokens = [latxa_tokenizer.convert_ids_to_tokens(enc["input_ids"]) for enc in encoded_latxa]
