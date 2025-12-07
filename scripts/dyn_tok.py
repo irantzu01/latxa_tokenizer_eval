@@ -6,7 +6,11 @@ import json
 project_root = os.path.expanduser(
     "~/MASTER/WiSe25/Lab Rotation/dynamic-tokenization"
 )
+morphscore_path = os.path.expanduser(
+        "~/MASTER/WiSe25/Lab Rotation/morphscore"
+)
 sys.path.append(project_root)
+sys.path.append(morphscore_path)
 
 
 from tokenizations.dynamic_bpe import Dynamic_BPE
