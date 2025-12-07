@@ -50,27 +50,48 @@ def token_set_overlap(token_lists1, token_lists2):
 
 
 # 4. word coverage
-def word_coverage(raw_examples, token_lists):
-    """
-    Computes average number of words not covered by the tokenization.
-    
-    raw_examples: list of dicts, each {"text": "..."}
-    token_lists: list of lists of token strings
-    """
-    uncovered_counts = []
-
-    for ex, tokens in zip(raw_examples, token_lists):
-        sent = ex["text"]  # extract the string
+def word_coverage_latxa(tokenizer, raw_examples, max_check=30000):
+    total = 0
+    single = 0
+    for ex in raw_examples[:max_check]:
+        sent = ex["text"]
         words = sent.split()
-        joined = "".join(tok.lstrip("Ġ") for tok in tokens)  # remove space marker
+        for w in words:
+            ids = tokenizer.encode(
+                w,
+                add_special_tokens=False
+            )
+            # remove special tokens
+            ids = [i for i in ids if i not in tokenizer.all_special_ids]
+            total += 1
+            if len(ids) == 1:
+                single += 1
+    return {
+        "total": total,
+        "single": single,
+        "coverage_pct": single / total
+    }
 
-        # count words not fully contained in joined tokens
-        uncovered = [w for w in words if w not in joined]
-        uncovered_counts.append(len(uncovered))
-
-    avg_uncovered = sum(uncovered_counts) / len(raw_examples)
-    return avg_uncovered
-
+def word_coverage_dynamic(dynamic_tokenizer, raw_examples, max_check=30000):
+    total = 0
+    single = 0
+    for ex in raw_examples[:max_check]:
+        words = ex["text"].split()
+        for w in words:
+            toks, _, _, _ = dynamic_tokenizer.tokenize_batch(
+                batch_examples=[{"text": w}],
+                max_nr_merges=10,
+                mlm=False
+            )
+            toks = toks[0]  # unwrap batch
+            total += 1
+            if len(toks) == 1:
+                single += 1
+    return {
+        "total": total,
+        "single": single,
+        "coverage_pct": single / total
+    }
 
 
 # 5. Most common tokens
