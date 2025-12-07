@@ -95,6 +95,27 @@ print("Number of dynamic tokenized examples:", len(encoded_dynamic))
 print(encoded_dynamic[0])
 
 
+# Evaluation
+from simple_tokenization_evaluation import (
+    avg_tokens_per_word,
+    token_length_distribution,
+    plot_token_length_distribution,
+    token_set_overlap,
+    word_coverage,
+)
+
+
+avg_latxa = avg_tokens_per_word(raw_examples, encoded_latxa)
+avg_dyn = avg_tokens_per_word(raw_examples, encoded_dynamic)
+print("Average tokens per word and per sentence:")
+print("Latxa:", avg_latxa)
+print("Dynamic BPE:", avg_dyn)
+
+# overlap = token_set_overlap(encoded_latxa, encoded_dynamic)
+
+# coverage_latxa = word_coverage(raw_examples, encoded_latxa)
+# coverage_dyn = word_coverage(raw_examples, encoded_dynamic)
+
 
 
     
