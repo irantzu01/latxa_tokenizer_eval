@@ -101,11 +101,11 @@ os.makedirs("data/dynamic_tok", exist_ok=True)
 os.makedirs("data/latxa_tok", exist_ok=True)
 
 with open("data/latxa_tok/latxa_tokens_" + ds_name + ".jsonl", "w", encoding="utf8") as f:
-    for item in encoded_candidates:
+    for item in encoded_latxa:
         f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
 with open("data/dynamic_tok/dynamic_tokens_" + ds_name + ".jsonl", "w", encoding="utf8") as f:
-    for item in encoded_candidates_dynamic:
+    for item in encoded_dynamic:
         f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
 print("Saved tokenized outputs to data/")
