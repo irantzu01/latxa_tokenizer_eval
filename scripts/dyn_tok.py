@@ -48,7 +48,6 @@ print("Hypernetwork + tokenizer + Dynamic BPE ready.")
 
 
 # Load datasets
-ds_name = "EusProficiency"
 ds_EusProficiency = load_dataset("HiTZ/EusProficiency")
 #ds_EusTrivia = load_dataset("HiTZ/EusTrivia")
 #ds_EusReading = load_dataset("HiTZ/EusReading")
@@ -58,57 +57,104 @@ candidates_list = ds_EusProficiency["test"]["candidates"]
 print("Dataset loaded.")
 
 
-# Build raw examples for dynamic tokenization
-raw_examples = []
-for q, cand_list in zip(questions, candidates_list):
-    combined = q + " [QSEP] " + " [CSEP] ".join(cand_list)
-    raw_examples.append({"text": combined})   
-print(raw_examples[0])
+results = []  # This will hold EVERYTHING
 
-
-# Tokenize raw examples with Latxa tokenizer
-encoded_latxa = []
-for example in raw_examples:
-    enc = latxa_tokenizer(
-        example["text"],
-        truncation=True,
-        padding=False,
-        return_tensors=None
-    )
-    encoded_latxa.append(enc)
-print("Latxa tokenization completed.")
-print(encoded_latxa[0])
-
-
-# Dynamic BPE tokenization
-encoded_dynamic = []
-BATCH_SIZE = 500
-for i in tqdm(range(0, len(raw_examples), BATCH_SIZE), desc="Dynamic BPE"):
-    batch = raw_examples[i : i + BATCH_SIZE]
-    dynamic_tokens, attr2, attr3, attr4 = dynamic_bpe.tokenize_batch(
+for question, candidates in zip(questions, candidates_list):
+    # Raw text
+    joined_text = question + " " + ", ".join(candidates)
+    
+    # Latxa tokenization
+    latxa_encodings = []
+    for cand in candidates:
+        enc = latxa_tokenizer(
+            question,
+            cand,
+            truncation=True,
+            padding=False,
+            return_tensors=None
+        )
+        latxa_encodings.append(enc)
+    
+    # Dynamic BPE tokenization
+    batch = [{"text": joined_text}]
+    dynamic_tokens, _, _, _ = dynamic_bpe.tokenize_batch(
         batch_examples=batch,
         max_nr_merges=10,
         mlm=True
     )
-    encoded_dynamic.extend(dynamic_tokens)
-print("Dynamic BPE tokenization completed.")
-print("Number of dynamic tokenized examples:", len(encoded_dynamic))
-print(encoded_dynamic[0])
+    dyn_enc = dynamic_tokens[0]
+
+    # Store all results
+    results.append({
+        "raw_question": question,
+        "raw_candidates": candidates,
+        "text": joined_text,
+        "latxa_tokens": latxa_encodings,
+        "dynamic_tokens": dyn_enc,
+    })
+
+# -------- SAVE --------
+os.makedirs("data", exist_ok=True)
 
 
-# Save tokenized outputs
-os.makedirs("data/dynamic_tok", exist_ok=True)
-os.makedirs("data/latxa_tok", exist_ok=True)
-
-with open("data/latxa_tok/latxa_tokens_" + ds_name + ".jsonl", "w", encoding="utf8") as f:
-    for item in encoded_latxa:
+with open("data/tokenization_results_EusProficiency.jsonl", "w", encoding="utf8") as f:
+    for item in results:
         f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
-with open("data/dynamic_tok/dynamic_tokens_" + ds_name + ".jsonl", "w", encoding="utf8") as f:
-    for item in encoded_dynamic:
-        f.write(json.dumps(item, ensure_ascii=False) + "\n")
+print("Saved all raw + tokenization results to data/tokenization_results.jsonl")
 
-print("Saved tokenized outputs to data/")
+
+# # Build raw examples for dynamic tokenization
+# raw_examples = []
+# for q, cand_list in zip(questions, candidates_list):
+#     combined = q + " [QSEP] " + " [CSEP] ".join(cand_list)
+#     raw_examples.append({"text": combined})   
+# print(raw_examples[0])
+
+
+# # Tokenize raw examples with Latxa tokenizer
+# encoded_latxa = []
+# for example in raw_examples:
+#     enc = latxa_tokenizer(
+#         example["text"],
+#         truncation=True,
+#         padding=False,
+#         return_tensors=None
+#     )
+#     encoded_latxa.append(enc)
+# print("Latxa tokenization completed.")
+# print(encoded_latxa[0])
+
+
+# # Dynamic BPE tokenization
+# encoded_dynamic = []
+# BATCH_SIZE = 500
+# for i in tqdm(range(0, len(raw_examples), BATCH_SIZE), desc="Dynamic BPE"):
+#     batch = raw_examples[i : i + BATCH_SIZE]
+#     dynamic_tokens, attr2, attr3, attr4 = dynamic_bpe.tokenize_batch(
+#         batch_examples=batch,
+#         max_nr_merges=10,
+#         mlm=True
+#     )
+#     encoded_dynamic.extend(dynamic_tokens)
+# print("Dynamic BPE tokenization completed.")
+# print("Number of dynamic tokenized examples:", len(encoded_dynamic))
+# print(encoded_dynamic[0])
+
+
+# # Save tokenized outputs
+# os.makedirs("data/dynamic_tok", exist_ok=True)
+# os.makedirs("data/latxa_tok", exist_ok=True)
+
+# with open("data/latxa_tok/latxa_tokens_" + ds_name + ".jsonl", "w", encoding="utf8") as f:
+#     for item in encoded_latxa:
+#         f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+# with open("data/dynamic_tok/dynamic_tokens_" + ds_name + ".jsonl", "w", encoding="utf8") as f:
+#     for item in encoded_dynamic:
+#         f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+# print("Saved tokenized outputs to data/")
 
 
 
