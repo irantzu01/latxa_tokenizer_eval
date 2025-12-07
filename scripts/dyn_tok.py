@@ -1,5 +1,7 @@
 import sys
 import os
+import json
+
 
 project_root = os.path.expanduser(
     "~/MASTER/WiSe25/Lab Rotation/dynamic-tokenization"
@@ -46,6 +48,7 @@ print("Hypernetwork + tokenizer + Dynamic BPE ready.")
 
 
 # Load datasets
+ds_name = "EusProficiency"
 ds_EusProficiency = load_dataset("HiTZ/EusProficiency")
 #ds_EusTrivia = load_dataset("HiTZ/EusTrivia")
 #ds_EusReading = load_dataset("HiTZ/EusReading")
@@ -91,6 +94,21 @@ for i in tqdm(range(0, len(raw_examples), BATCH_SIZE), desc="Dynamic BPE"):
 print("Dynamic BPE tokenization completed.")
 print("Number of dynamic tokenized examples:", len(encoded_dynamic))
 print(encoded_dynamic[0])
+
+
+# Save tokenized outputs
+os.makedirs("data/dynamic_tok", exist_ok=True)
+os.makedirs("data/latxa_tok", exist_ok=True)
+
+with open("data/latxa_tok/latxa_tokens_" + ds_name + ".jsonl", "w", encoding="utf8") as f:
+    for item in encoded_candidates:
+        f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+with open("data/dynamic_tok/dynamic_tokens_" + ds_name + ".jsonl", "w", encoding="utf8") as f:
+    for item in encoded_candidates_dynamic:
+        f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+print("Saved tokenized outputs to data/")
 
 
 
