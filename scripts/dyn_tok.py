@@ -50,11 +50,24 @@ ds_EusProficiency = load_dataset("HiTZ/EusProficiency")
 #ds_EusTrivia = load_dataset("HiTZ/EusTrivia")
 #ds_EusReading = load_dataset("HiTZ/EusReading")
 #ds_EusExams = load_dataset("HiTZ/EusExams")
-print("Datasets loaded.")
 questions = ds_EusProficiency["test"]["question"]
 candidates_list = ds_EusProficiency["test"]["candidates"]
+print("Dataset loaded.")
 
 
+# Build raw examples for dynamic tokenization
+raw_examples = []
+
+for q, cand_list in zip(questions, candidates_list):
+    for c in cand_list:
+        combined = q.strip() + " " + c.strip()
+        raw_examples.append({"text": combined})
+
+print("Number of raw examples:", len(raw_examples))
+print(raw_examples[0])
+
+
+# Tokenize questions and candidates with Latxa tokenizer
 encoded_questions = []
 encoded_candidates = []
 
