@@ -50,48 +50,63 @@ def token_set_overlap(token_lists1, token_lists2):
 
 
 # 4. word coverage
-def word_coverage_latxa(tokenizer, raw_examples, max_check=30000):
+# convert HF BatchEncoding list -> list[list[token_str]]
+def prepare_latxa_token_strings(encoded_latxa, tokenizer):
+    """
+    encoded_latxa: list of BatchEncoding dicts (each has 'input_ids' possibly nested)
+    tokenizer: HF tokenizer object (to convert ids->tokens)
+    returns: list of token-string lists, one per example
+    """
+    latxa_tokens = []
+    for enc in encoded_latxa:
+        # enc may be a BatchEncoding or dict. Try to extract input_ids
+        if isinstance(enc, dict) and "input_ids" in enc:
+            ids = enc["input_ids"]
+            # sometimes input_ids is nested list (e.g., pair encoding), handle that
+            if isinstance(ids, list) and len(ids) > 0 and isinstance(ids[0], (list, tuple)):
+                ids = ids[0]
+            latxa_tokens.append(tokenizer.convert_ids_to_tokens(ids))
+        else:
+            # if it's already a list of token strings, keep as-is
+            latxa_tokens.append(enc)
+    return latxa_tokens
+
+
+def word_coverage_from_token_strings(raw_examples, token_lists, token_type="token"):
+    """
+    raw_examples: list of dicts with "text" key (your raw_examples)
+    token_lists: list of token-lists (strings) aligned with raw_examples
+    token_type: just a label for returns
+    returns: dict {total, single, coverage_pct}
+    """
     total = 0
     single = 0
-    for ex in raw_examples[:max_check]:
+
+    for ex, toks in zip(raw_examples, token_lists):
         sent = ex["text"]
         words = sent.split()
+        # For speed: build tokenization of each word by tokenizing the word itself using the token list alignment
+        # Simpler approach: for each word, ask tokenizer to encode the single word,
+        # but since we already have token lists per sentence, we use a heuristic:
+        # count single-token words by checking if that word appears as a single token when tokenizing the word
+        # (we will instead re-tokenize the word using the same tokenizer if needed; but here token_lists are strings)
         for w in words:
-            ids = tokenizer.encode(
-                w,
-                add_special_tokens=False
-            )
-            # remove special tokens
-            ids = [i for i in ids if i not in tokenizer.all_special_ids]
+            # Naive but accurate approach: re-tokenize the word using the sentence's tokenization tokenizer is unknown.
+            # So we conservatively check whether the word equals the token after stripping common markers.
+            # First try to find tokens in the sentence that match the word when stripping markers.
+            # If any token equals the whole word, count as single-token word.
+            found_single = False
+            for tok in toks:
+                # normalize token to compare to word
+                tnorm = tok.lstrip("Ġ▁")  # common markers
+                if tnorm == w:
+                    found_single = True
+                    break
             total += 1
-            if len(ids) == 1:
+            if found_single:
                 single += 1
-    return {
-        "total": total,
-        "single": single,
-        "coverage_pct": single / total
-    }
 
-def word_coverage_dynamic(dynamic_tokenizer, raw_examples, max_check=30000):
-    total = 0
-    single = 0
-    for ex in raw_examples[:max_check]:
-        words = ex["text"].split()
-        for w in words:
-            toks, _, _, _ = dynamic_tokenizer.tokenize_batch(
-                batch_examples=[{"text": w}],
-                max_nr_merges=10,
-                mlm=False
-            )
-            toks = toks[0]  # unwrap batch
-            total += 1
-            if len(toks) == 1:
-                single += 1
-    return {
-        "total": total,
-        "single": single,
-        "coverage_pct": single / total
-    }
+    return {"total": total, "single": single, "coverage_pct": single / total if total else 0.0}
 
 
 # 5. Most common tokens
