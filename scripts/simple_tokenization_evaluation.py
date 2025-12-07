@@ -93,23 +93,23 @@ def analyze_family(words, tokenizer):
 
 
 # 7. Morphscore evaluation
-sys.path.append("/home/irantzu/MASTER/WiSe25/Lab Rotation/morphscore")
+# sys.path.append("/home/irantzu/MASTER/WiSe25/Lab Rotation/morphscore")
 
-ds = load_dataset("catherinearnett/morphscore")['train']
-df = ds.filter(lambda x: x["language"] == "eus_latn").to_pandas()
+# ds = load_dataset("catherinearnett/morphscore")['train']
+# df = ds.filter(lambda x: x["language"] == "eus_latn").to_pandas()
 
-from morphscore import MorphScore
-morph_score = MorphScore(
-    data_dir="../data/",
-    language_subset=['eus_latn'],
-    by_split=False,
-    freq_scale=True,
-    exclude_single_tok=False
-)
+# from morphscore import MorphScore
+# morph_score = MorphScore(
+#     data_dir="../data/",
+#     language_subset=['eus_latn'],
+#     by_split=False,
+#     freq_scale=True,
+#     exclude_single_tok=False
+# )
 
-result, df = morph_score.eval(hypernet_tokenizer, return_df=True)
+# result, df = morph_score.eval(tokenizer, return_df=True)
 
-metrics = result['eus_latn']
-for key, value in metrics.items():
-    print(f"{key}: {value}")
+# metrics = result['eus_latn']
+# for key, value in metrics.items():
+#     print(f"{key}: {value}")
 
