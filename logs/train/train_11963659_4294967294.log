@@ -1,0 +1,28 @@
+================================================================================
+JobID = 11963659
+User = u25035, Account = react_ag_beinborn_students
+Partition = react, Nodelist = ggpu141
+================================================================================
+Starting job 11963659 on node ggpu141
+Environment loaded.
+Python 3.11.9
+transformers              4.45.2
+Running python experiment...
+Latxa model and tokenizer loaded.
+Hypernetwork + tokenizer + Dynamic BPE ready.
+Dataset loaded.
+{'text': 'Bi seme-alaba ditu, ..... ederragoak. [QSEP] zenbat eta [CSEP] haiek baino [CSEP] nola edo hala [CSEP] zein baino zein'}
+Latxa tokenization completed.
+{'input_ids': [1, 3457, 269, 2004, 29899, 284, 5363, 270, 1981, 29892, 6317, 856, 1226, 261, 1431, 29877, 557, 29889, 518, 29984, 1660, 29925, 29962, 503, 264, 10222, 634, 29874, 518, 29907, 1660, 29925, 29962, 447, 11718, 289, 475, 29877, 518, 29907, 1660, 29925, 29962, 302, 2963, 1226, 29877, 298, 2883, 518, 29907, 1660, 29925, 29962, 3777, 262, 289, 475, 29877, 3777, 262], 'attention_mask': [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]}
+Dynamic BPE tokenization completed.
+Number of dynamic tokenized examples: 5169
+['<s>', 'ĠBi', 'Ġs', 'eme', '-', 'al', 'aba', 'Ġdit', 'u', ',', 'Ġ.....', 'Ġed', 'err', 'ago', 'ak', '.', 'Ġ[', 'QSEP', ']', 'Ġzen', 'bat', 'Ġeta', 'Ġ[', 'CSEP', ']', 'Ġha', 'iek', 'Ġb', 'ain', 'o', 'Ġ[', 'CSEP', ']', 'Ġn', 'ola', 'Ġed', 'o', 'Ġhala', 'Ġ[', 'CSEP', ']', 'Ġze', 'in', 'Ġb', 'ain', 'o', 'Ġze', 'in', '</s>']
+Job finished.
+============ Job Information ===================================================
+Submitted: 2025-12-08T10:54:11
+Started: 2025-12-08T10:54:38
+Ended: 2025-12-08T10:56:10
+Elapsed: 2 min, Limit: 120 min, Difference: 118 min
+CPUs: 8, Nodes: 1
+Estimated Consumption: 5.00 core-hours
+================================================================================
