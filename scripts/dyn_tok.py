@@ -116,13 +116,13 @@ encoded_latxa_tokens = [latxa_tokenizer.convert_ids_to_tokens(enc["input_ids"]) 
 # print("Latxa:", avg_latxa)
 # print("Dynamic BPE:", avg_dyn)
 
-coverage_latxa = word_coverage_from_token_strings(raw_examples, encoded_latxa_tokens)
-coverage_dyn = word_coverage_from_token_strings(raw_examples, encoded_dynamic)
-print("Word coverage in latxa:", coverage_latxa)
-print("Word coverage in dynamic BPE:", coverage_dyn)
+# coverage_latxa = word_coverage_from_token_strings(raw_examples, encoded_latxa_tokens)
+# coverage_dyn = word_coverage_from_token_strings(raw_examples, encoded_dynamic)
+# print("Word coverage in latxa:", coverage_latxa)
+# print("Word coverage in dynamic BPE:", coverage_dyn)
 
 
-# overlap = token_set_overlap(encoded_latxa, encoded_dynamic)
+overlap = token_set_overlap(encoded_latxa, encoded_dynamic)
 
 
     
