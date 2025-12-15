@@ -103,6 +103,6 @@ for item in evaluation_items[:1]:  # start with 1 item for sanity check
 
 print(item["dynamic_tokens"][0][:30])
 
-len(evaluation_items)               # == dataset size
-len(evaluation_items[0]["choice_texts"])  # == 4
-len(evaluation_items[0]["dynamic_tokens"]) # == 4
+print(len(evaluation_items))          # == dataset size
+print(len(evaluation_items[0]["choice_texts"]))  # == 4
+print(len(evaluation_items[0]["dynamic_tokens"])) # == 4
