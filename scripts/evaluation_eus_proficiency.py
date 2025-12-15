@@ -101,8 +101,6 @@ for item in evaluation_items[:1]:  # start with 1 item for sanity check
 
     item["dynamic_tokens"] = dynamic_choice_tokens
 
-print(item["dynamic_tokens"][0][:30])
-
-print(len(evaluation_items))          # == dataset size
-print(len(evaluation_items[0]["choice_texts"]))  # == 4
-print(len(evaluation_items[0]["dynamic_tokens"])) # == 4
+print("Dynamic tokenization completed for evaluation items.")
+print(evaluation_items[0]["choice_texts"][0])
+print(evaluation_items[0]["dynamic_tokens"][0])
