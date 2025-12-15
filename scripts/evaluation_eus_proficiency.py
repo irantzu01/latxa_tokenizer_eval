@@ -54,6 +54,21 @@ print(evaluation_items[0])
 print("Evaluation items prepared:", len(evaluation_items))
 
 
+# Load hypernetwork
+hypernet = AutoModel.from_pretrained(
+    "benjamin/zett-hypernetwork-Meta-Llama-3-8B-experimental",
+    trust_remote_code=True
+)
+hypernet_tokenizer = AutoTokenizer.from_pretrained(
+    "benjamin/zett-hypernetwork-Meta-Llama-3-8B-experimental"
+)
+
+dynamic_bpe = Dynamic_BPE(
+    tokenizer=hypernet_tokenizer,
+    tokenizer_boundary="pretokens",
+)
+print("Hypernetwork + tokenizer + Dynamic BPE ready.")
+
 
 def dynamic_tokenize_texts(texts, dynamic_bpe, batch_size=128, max_merges=10):
     """
