@@ -1,4 +1,27 @@
+import sys
+import os
+import json
+
+
+
+project_root = os.path.expanduser(
+    "~/MASTER/WiSe25/Lab Rotation/dynamic-tokenization"
+)
+sys.path.append(project_root)
+
+
+from tokenizations.dynamic_bpe import Dynamic_BPE
+from transformers import AutoTokenizer, AutoModel, AutoModelForCausalLM
+import torch
+from zett.utils import get_surface_form_matrix
+from collections import Counter
 from datasets import load_dataset
+import numpy as np
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+import numpy as np
+from collections import OrderedDict
+
 
 
 def format_prompt(question, candidates):
@@ -11,7 +34,8 @@ def format_prompt(question, candidates):
         f"Erantzuna:"
     )
 
-#Load the EusProficiency dataset's test split
+
+#Load the EusProficiency dataset and prepare evaluation items
 ds = load_dataset("HiTZ/EusProficiency", split="test")
 
 CHOICES = [" A", " B", " C", " D"]
@@ -27,8 +51,7 @@ for item in ds:
         "answer": item["answer"]        # int: 0–3
     })
 print(evaluation_items[0])
-
-from tqdm import tqdm
+print("Evaluation items prepared:", len(evaluation_items))
 
 
 
