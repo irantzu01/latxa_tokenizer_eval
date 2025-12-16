@@ -109,13 +109,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = model.to(device)
 
 #Load Latxa tokenizer and model
-latxa_model_name = "HiTZ/latxa-7b"
-latxa_tokenizer = AutoTokenizer.from_pretrained(latxa_model_name)
-model = AutoModelForCausalLM.from_pretrained(
-    latxa_model_name,
-    trust_remote_code=True,
-    device_map="auto",
-)
+tokenizer_latxa = AutoTokenizer.from_pretrained("HiTZ/latxa-7b-v1.2")
+model = AutoModelForCausalLM.from_pretrained("HiTZ/latxa-7b-v1.2")
 print("Latxa model and tokenizer loaded.")
 
 augmenter = DynamicAugmenter(
