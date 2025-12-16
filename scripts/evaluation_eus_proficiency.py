@@ -118,7 +118,8 @@ augmenter = DynamicAugmenter(
     latxa_tokenizer=latxa_tokenizer,
     hypernet=hypernet,
     hypernet_tokenizer=hypernet_tokenizer,
-    cache_limit=50_000   # safe default
+    cache_limit=50_000,   # safe default
+    device=device
 )
 
 print("DynamicAugmenter ready.")
