@@ -67,7 +67,7 @@ class DynamicAugmenter:
 
         surfaces = get_surface_form_matrix(
             char_tokens,
-            max_len=self.max_surface_len,
+            max_len=self.self.hypernet.config.hn_surface_maxlen,
             tokenizer_to_use=self.hypernet_tokenizer
         )
 
