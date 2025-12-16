@@ -56,9 +56,8 @@ class DynamicAugmenter:
         Returns dict token -> (pred_in, pred_out) as torch tensors on device.
         """
         # Tokenizer expects list of dicts for get_surface_form_matrix usage
-        batch_examples = [{"text": t} for t in tokens_list]
-        char_tokens = expand_to_char_tokens(tokens_list)  # [['a','l','a','b','a'], ...]
-        char_strings = ["".join(chars) for chars in char_tokens]  # ['alaba', 'da', ...]
+        char_tokens = expand_to_char_tokens(tokens_list)
+        char_strings = ["".join(chars) for chars in char_tokens]
 
         surfaces = get_surface_form_matrix(
             char_strings,
@@ -66,12 +65,10 @@ class DynamicAugmenter:
             tokenizer_to_use=self.hypernet_tokenizer
         )
 
-        # # Build surface forms matrix (the zett helper expects hypernet_tokenizer)
-        # surfaces = get_surface_form_matrix(
-        #     [tokens_list],  # pass as list of list? the function in zett returns arrs; adapt if needed
-        #     maxlen=self.hypernet.config.hn_surface_maxlen,
-        #     tokenizer_to_use=self.hypernet_tokenizer
-        # )[0]  # get first output if returns tuple
+        if isinstance(surfaces, tuple):
+            surfaces = surfaces[0]  # take the array
+
+        surfaces = torch.from_numpy(surfaces).to(device)
 
         # Build source embeddings matrix from current model (concatenate in/out as in example)
         src_emb = torch.cat([
