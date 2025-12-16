@@ -57,13 +57,14 @@ class DynamicAugmenter:
         """
         # Tokenizer expects list of dicts for get_surface_form_matrix usage
         batch_examples = [{"text": t} for t in tokens_list]
-        char_tokens = expand_to_char_tokens(tokens_list)
+        char_tokens = expand_to_char_tokens(tokens_list)  # [['a','l','a','b','a'], ...]
+        char_strings = ["".join(chars) for chars in char_tokens]  # ['alaba', 'da', ...]
 
-        assert all(
-        isinstance(c, str) and len(c) == 1
-        for token in char_tokens
-        for c in token
-        )   
+        surfaces = get_surface_form_matrix(
+            char_strings,
+            maxlen=self.hypernet.config.hn_surface_maxlen,
+            tokenizer_to_use=self.hypernet_tokenizer
+        )  
 
         surfaces = get_surface_form_matrix(
             char_tokens,
