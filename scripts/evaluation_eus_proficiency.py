@@ -20,7 +20,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import numpy as np
-from collections import OrderedDict
+import torch
 
 
 
@@ -62,12 +62,12 @@ hypernet = AutoModel.from_pretrained(
 hypernet_tokenizer = AutoTokenizer.from_pretrained(
     "benjamin/zett-hypernetwork-Meta-Llama-3-8B-experimental"
 )
-
 dynamic_bpe = Dynamic_BPE(
     tokenizer=hypernet_tokenizer,
     tokenizer_boundary="pretokens",
 )
 print("Hypernetwork + tokenizer + Dynamic BPE ready.")
+
 
 
 def dynamic_tokenize_texts(texts, dynamic_bpe, batch_size=128, max_merges=10):
@@ -98,9 +98,32 @@ for item in evaluation_items[:1]:  # start with 1 item for sanity check
         dynamic_bpe,
         batch_size=4
     )
-
     item["dynamic_tokens"] = dynamic_choice_tokens
-
 print("Dynamic tokenization completed for evaluation items.")
-print(evaluation_items[0]["choice_texts"][0])
-print(evaluation_items[0]["dynamic_tokens"][0])
+
+
+
+from dynamic_augmenter import DynamicAugmenter
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = model.to(device)
+
+#Load Latxa tokenizer and model
+latxa_model_name = "HiTZ/latxa-7b"
+latxa_tokenizer = AutoTokenizer.from_pretrained(latxa_model_name)
+model = AutoModelForCausalLM.from_pretrained(
+    latxa_model_name,
+    trust_remote_code=True,
+    device_map="auto",
+)
+print("Latxa model and tokenizer loaded.")
+
+augmenter = DynamicAugmenter(
+    model=model,
+    latxa_tokenizer=latxa_tokenizer,
+    hypernet=hypernet,
+    hypernet_tokenizer=hypernet_tokenizer,
+    cache_limit=50_000   # safe default
+)
+
+print("DynamicAugmenter ready.")
