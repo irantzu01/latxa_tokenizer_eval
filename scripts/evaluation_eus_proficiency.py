@@ -106,26 +106,26 @@ print("Dynamic tokenization completed.")
 
 
 
-
 from dynamic_augmenter import DynamicAugmenter
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# #Load Latxa tokenizer and model
-# latxa_tokenizer = AutoTokenizer.from_pretrained("HiTZ/latxa-7b-v1.2")
-# model = AutoModelForCausalLM.from_pretrained("HiTZ/latxa-7b-v1.2")
-# model = model.to(device)
-# print("Latxa model and tokenizer loaded.")
+#Load Latxa tokenizer and model
+latxa_tokenizer = AutoTokenizer.from_pretrained("HiTZ/latxa-7b-v1.2")
+model = AutoModelForCausalLM.from_pretrained("HiTZ/latxa-7b-v1.2")
+model = model.to(device)
+print("Latxa model and tokenizer loaded.")
 
-# augmenter = DynamicAugmenter(
-#     model=model,
-#     latxa_tokenizer=latxa_tokenizer,
-#     hypernet=hypernet,
-#     hypernet_tokenizer=hypernet_tokenizer,
-#     cache_limit=50_000,   # safe default
-#     device=device
-# )
-# print("DynamicAugmenter ready.")
+# Initialize DynamicAugmenter
+augmenter = DynamicAugmenter(
+    model=model,
+    latxa_tokenizer=latxa_tokenizer,
+    hypernet=hypernet,
+    hypernet_tokenizer=hypernet_tokenizer,
+    cache_limit=50_000,   # safe default
+    device=device
+)
+print("DynamicAugmenter ready.")
 
 # choice_token_ids = augmenter.tokens_to_ids(item["dynamic_tokens"])
 # print("Token IDs for dynamic tokens obtained via DynamicAugmenter.")
