@@ -91,15 +91,19 @@ def dynamic_tokenize_texts(texts, dynamic_bpe, batch_size=128, max_merges=10):
 
     return all_tokens
 
-
-for item in evaluation_items[:1]:  # start with 1 item for sanity check
+for item in evaluation_items:
     dynamic_choice_tokens = dynamic_tokenize_texts(
         item["choice_texts"],
         dynamic_bpe,
         batch_size=4
     )
+    # Ensure structure: list[list[str]]
+    assert isinstance(dynamic_choice_tokens, list)
+    assert isinstance(dynamic_choice_tokens[0], list)
     item["dynamic_tokens"] = dynamic_choice_tokens
-print("Dynamic tokenization completed for evaluation items.")
+
+print("Dynamic tokenization completed.")
+
 
 
 
@@ -107,26 +111,26 @@ from dynamic_augmenter import DynamicAugmenter
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-#Load Latxa tokenizer and model
-latxa_tokenizer = AutoTokenizer.from_pretrained("HiTZ/latxa-7b-v1.2")
-model = AutoModelForCausalLM.from_pretrained("HiTZ/latxa-7b-v1.2")
-model = model.to(device)
-print("Latxa model and tokenizer loaded.")
+# #Load Latxa tokenizer and model
+# latxa_tokenizer = AutoTokenizer.from_pretrained("HiTZ/latxa-7b-v1.2")
+# model = AutoModelForCausalLM.from_pretrained("HiTZ/latxa-7b-v1.2")
+# model = model.to(device)
+# print("Latxa model and tokenizer loaded.")
 
-augmenter = DynamicAugmenter(
-    model=model,
-    latxa_tokenizer=latxa_tokenizer,
-    hypernet=hypernet,
-    hypernet_tokenizer=hypernet_tokenizer,
-    cache_limit=50_000,   # safe default
-    device=device
-)
-print("DynamicAugmenter ready.")
+# augmenter = DynamicAugmenter(
+#     model=model,
+#     latxa_tokenizer=latxa_tokenizer,
+#     hypernet=hypernet,
+#     hypernet_tokenizer=hypernet_tokenizer,
+#     cache_limit=50_000,   # safe default
+#     device=device
+# )
+# print("DynamicAugmenter ready.")
 
-choice_token_ids = augmenter.tokens_to_ids(item["dynamic_tokens"])
-print("Token IDs for dynamic tokens obtained via DynamicAugmenter.")
+# choice_token_ids = augmenter.tokens_to_ids(item["dynamic_tokens"])
+# print("Token IDs for dynamic tokens obtained via DynamicAugmenter.")
 
-print(type(dynamic_choice_tokens), type(dynamic_choice_tokens[0]))
+# print(type(dynamic_choice_tokens), type(dynamic_choice_tokens[0]))
 
 # def build_batch_tensors(batch_ids, pad_id, device):
 #     max_len = max(len(seq) for seq in batch_ids)
