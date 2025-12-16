@@ -127,32 +127,93 @@ augmenter = DynamicAugmenter(
 )
 print("DynamicAugmenter ready.")
 
-# choice_token_ids = augmenter.tokens_to_ids(item["dynamic_tokens"])
-# print("Token IDs for dynamic tokens obtained via DynamicAugmenter.")
 
-# print(type(dynamic_choice_tokens), type(dynamic_choice_tokens[0]))
+# Convert dynamic tokens → token IDs using DynamicAugmenter
+all_choice_token_ids = []
 
-# def build_batch_tensors(batch_ids, pad_id, device):
-#     max_len = max(len(seq) for seq in batch_ids)
+for item in tqdm(evaluation_items, desc="Mapping dynamic tokens to IDs"):
+    choice_token_ids = augmenter.tokens_to_ids(item["dynamic_tokens"])
+    all_choice_token_ids.append(choice_token_ids)
 
-#     input_ids = torch.full(
-#         (len(batch_ids), max_len),
-#         pad_id,
-#         dtype=torch.long,
-#         device=device
-#     )
+print("Dynamic token → ID conversion completed.")
 
-#     attention_mask = torch.zeros_like(input_ids)
 
-#     for i, seq in enumerate(batch_ids):
-#         seq = torch.tensor(seq, device=device)
-#         input_ids[i, :len(seq)] = seq
-#         attention_mask[i, :len(seq)] = 1
+# Build batch tensors
+def build_batch_tensors(batch_ids, pad_id, device):
+    """
+    batch_ids: list[list[int]]  (len = 4 choices)
+    """
+    max_len = max(len(seq) for seq in batch_ids)
 
-#     return input_ids, attention_mask
+    input_ids = torch.full(
+        (len(batch_ids), max_len),
+        pad_id,
+        dtype=torch.long,
+        device=device
+    )
 
-# pad_id = latxa_tokenizer.pad_token_id or latxa_tokenizer.eos_token_id
-# input_ids, attention_mask = build_batch_tensors(choice_token_ids, pad_id, device)
-# print("Batch tensors built for model input.")
-# print("Input IDs shape:", input_ids.shape)
-# print("Attention mask shape:", attention_mask.shape)
+    attention_mask = torch.zeros_like(input_ids)
+
+    for i, seq in enumerate(batch_ids):
+        seq = torch.tensor(seq, dtype=torch.long, device=device)
+        input_ids[i, :len(seq)] = seq
+        attention_mask[i, :len(seq)] = 1
+
+    return input_ids, attention_mask
+
+
+# Multiple-choice scoring (log-likelihood of last token)
+@torch.no_grad()
+def score_choices(model, input_ids, attention_mask):
+    """
+    input_ids: (4, seq_len)
+    Returns: tensor of shape (4,) with log-likelihood scores
+    """
+    outputs = model(
+        input_ids=input_ids,
+        attention_mask=attention_mask
+    )
+
+    logits = outputs.logits  # (4, seq_len, vocab_size)
+
+    last_token_positions = attention_mask.sum(dim=1) - 1
+    scores = []
+
+    for i in range(input_ids.size(0)):
+        pos = last_token_positions[i]
+        token_id = input_ids[i, pos]
+        log_probs = torch.log_softmax(logits[i, pos], dim=-1)
+        scores.append(log_probs[token_id])
+
+    return torch.stack(scores)
+
+
+# Evaluation loop
+pad_id = latxa_tokenizer.pad_token_id or latxa_tokenizer.eos_token_id
+
+correct = 0
+total = 0
+
+model.eval()
+
+for item, choice_ids in tqdm(
+    zip(evaluation_items, all_choice_token_ids),
+    total=len(evaluation_items),
+    desc="Evaluating"
+):
+    input_ids, attention_mask = build_batch_tensors(
+        choice_ids,
+        pad_id,
+        device
+    )
+
+    scores = score_choices(model, input_ids, attention_mask)
+    predicted = torch.argmax(scores).item()
+
+    if predicted == item["answer"]:
+        correct += 1
+    total += 1
+
+
+accuracy = correct / total
+print(f"\nFinal accuracy (Dynamic BPE + Hypernet): {accuracy:.4f}")
