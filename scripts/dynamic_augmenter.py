@@ -27,10 +27,10 @@ class DynamicAugmenter:
 
     def __init__(self, model, latxa_tokenizer, hypernet, hypernet_tokenizer,
                  cache_limit=50000, device=None):
-        self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = model.to(self.device)
+        self.device = device if device is not None else torch.device("cpu")
+        self.model = model.to(device)
         self.latxa_tokenizer = latxa_tokenizer
-        self.hypernet = hypernet.to(self.device)
+        self.hypernet = hypernet.to(device)
         self.hypernet_tokenizer = hypernet_tokenizer
         self.vocab = latxa_tokenizer.get_vocab()
         self.reverse_vocab = {v:k for k,v in self.vocab.items()}
@@ -49,38 +49,47 @@ class DynamicAugmenter:
 
     def _predict_embeddings_for_tokens(self, tokens_list):
         """
-        Use hypernet to predict embeddings for tokens_list (list of token strings).
-        Returns dict token -> (pred_in, pred_out) as torch tensors on self.device.
+        Predict embeddings for dynamic tokens using Zett hypernetwork.
+        Returns dict[token] -> (in_emb, out_emb) on CPU.
         """
-        # Convert tokens to characters
+
+        # Convert tokens to char strings
         char_tokens = expand_to_char_tokens(tokens_list)
         char_strings = ["".join(chars) for chars in char_tokens]
 
-        # Get surface form matrix from Zett
+        # Build surface form matrix
         surfaces = get_surface_form_matrix(
             char_strings,
             maxlen=self.hypernet.config.hn_surface_maxlen,
             tokenizer_to_use=self.hypernet_tokenizer
         )
 
-        # Handle tuple or array
+        # Unpack tuple if needed
         if isinstance(surfaces, tuple):
             surfaces = surfaces[0]
-        if isinstance(surfaces, np.ndarray):
-            surfaces = torch.from_numpy(surfaces)
-        elif not isinstance(surfaces, torch.Tensor):
-            raise TypeError(f"Expected np.ndarray or torch.Tensor, got {type(surfaces)}")
 
-        surfaces = surfaces.to(self.device)
+        # Convert to tensor on device
+        surfaces = torch.tensor(surfaces, dtype=torch.long, device=self.device)
+
+        # ✅ THIS is the correct source embedding matrix
+        source_embeddings = self.model.get_input_embeddings().weight
 
         with torch.no_grad():
-            pred_in, pred_out, _ = self.hypernet(surfaces)
+            pred_in, pred_out, _ = self.hypernet(
+                surfaces,
+                source_embeddings=source_embeddings
+            )
 
+        # Return CPU tensors
         result = {}
-        for i, t in enumerate(tokens_list):
-            result[t] = (pred_in[i].detach(), pred_out[i].detach())
+        for i, tok in enumerate(tokens_list):
+            result[tok] = (
+                pred_in[i].detach().cpu(),
+                pred_out[i].detach().cpu(),
+            )
 
         return result
+
 
     def add_and_assign_new_tokens(self, new_token_strs):
         """Add new dynamic tokens to cache, predict embeddings, and assign IDs."""
