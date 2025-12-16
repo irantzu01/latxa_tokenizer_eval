@@ -177,6 +177,7 @@ class DynamicAugmenter:
         # gather all unique tokens that are not in base vocab
         uniques = set(t for seq in tokenized_batch for t in seq)
         new_tokens = [t for t in uniques if t not in self.vocab]
+        new_tokens = [normalize_dynamic_token(t) for t in new_tokens]
         # ensure they are created/assigned
         mapping = self.add_and_assign_new_tokens(new_tokens)
         # Now map sequences
@@ -190,3 +191,23 @@ class DynamicAugmenter:
                     ids.append(self.cache[t])
             out_ids.append(ids)
         return out_ids
+    
+
+
+def normalize_dynamic_token(tok: str) -> str:
+    """
+    Normalize dynamic tokens to plain surface forms
+    compatible with Zett hypernetwork.
+    """
+    # Common whitespace / BPE markers
+    tok = tok.replace("Ġ", "")
+    tok = tok.replace("▁", "")
+    tok = tok.replace("<s>", "")
+    tok = tok.replace("</s>", "")
+    tok = tok.strip()
+
+    # Avoid empty tokens
+    if tok == "":
+        tok = " "
+
+    return tok
