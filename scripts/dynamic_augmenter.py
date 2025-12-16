@@ -64,12 +64,6 @@ class DynamicAugmenter:
             char_strings,
             maxlen=self.hypernet.config.hn_surface_maxlen,
             tokenizer_to_use=self.hypernet_tokenizer
-        )  
-
-        surfaces = get_surface_form_matrix(
-            char_tokens,
-            maxlen=self.hypernet.config.hn_surface_maxlen,
-            tokenizer_to_use=self.hypernet_tokenizer
         )
 
         # # Build surface forms matrix (the zett helper expects hypernet_tokenizer)
