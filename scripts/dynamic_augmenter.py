@@ -188,6 +188,7 @@ class DynamicAugmenter:
         for seq in tokenized_batch:
             ids = []
             for t in seq:
+                t = normalize_dynamic_token(t)
                 if t in self.vocab:
                     ids.append(self.vocab[t])
                 else:
