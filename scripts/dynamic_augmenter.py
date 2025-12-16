@@ -57,13 +57,26 @@ class DynamicAugmenter:
         """
         # Tokenizer expects list of dicts for get_surface_form_matrix usage
         batch_examples = [{"text": t} for t in tokens_list]
+        char_tokens = expand_to_char_tokens(tokens_list)
 
-        # Build surface forms matrix (the zett helper expects hypernet_tokenizer)
+        assert all(
+        isinstance(c, str) and len(c) == 1
+        for token in char_tokens
+        for c in token
+        )   
+
         surfaces = get_surface_form_matrix(
-            [tokens_list],  # pass as list of list? the function in zett returns arrs; adapt if needed
-            maxlen=self.hypernet.config.hn_surface_maxlen,
+            char_tokens,
+            max_len=self.max_surface_len,
             tokenizer_to_use=self.hypernet_tokenizer
-        )[0]  # get first output if returns tuple
+        )
+
+        # # Build surface forms matrix (the zett helper expects hypernet_tokenizer)
+        # surfaces = get_surface_form_matrix(
+        #     [tokens_list],  # pass as list of list? the function in zett returns arrs; adapt if needed
+        #     maxlen=self.hypernet.config.hn_surface_maxlen,
+        #     tokenizer_to_use=self.hypernet_tokenizer
+        # )[0]  # get first output if returns tuple
 
         # Build source embeddings matrix from current model (concatenate in/out as in example)
         src_emb = torch.cat([
@@ -215,3 +228,11 @@ def normalize_dynamic_token(tok: str) -> str:
         tok = " "
 
     return tok
+
+
+def expand_to_char_tokens(tokens):
+    expanded = []
+    for t in tokens:
+        t = normalize_dynamic_token(t)
+        expanded.append(list(t))  # ['a','l','a','b','a']
+    return expanded
