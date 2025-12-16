@@ -10,7 +10,7 @@ class DynamicAugmenter:
         and write those embeddings into model's embedding matrix.
     """
 
-    def __init__(self, model, latxa_tokenizer, hypernet, hypernet_tokenizer, cache_limit=50000):
+    def __init__(self, model, latxa_tokenizer, hypernet, hypernet_tokenizer, cache_limit=50000, device='cpu'):
         self.model = model
         self.latxa_tokenizer = latxa_tokenizer
         self.hypernet = hypernet.to(device)
