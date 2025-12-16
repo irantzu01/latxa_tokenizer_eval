@@ -55,36 +55,38 @@ class DynamicAugmenter:
         Use hypernet to predict embeddings for tokens_list (list of token strings).
         Returns dict token -> (pred_in, pred_out) as torch tensors on device.
         """
-        # Tokenizer expects list of dicts for get_surface_form_matrix usage
+        # Convert tokens to characters
         char_tokens = expand_to_char_tokens(tokens_list)
         char_strings = ["".join(chars) for chars in char_tokens]
 
+        # Get surface form matrix from Zett
         surfaces = get_surface_form_matrix(
             char_strings,
             maxlen=self.hypernet.config.hn_surface_maxlen,
             tokenizer_to_use=self.hypernet_tokenizer
         )
 
+        # Some versions return a tuple
         if isinstance(surfaces, tuple):
-            surfaces = surfaces[0]  # take the array
+            surfaces = surfaces[0]
 
-        surfaces = torch.from_numpy(surfaces).to(device)
+        # If it’s already a tensor, just move to device
+        surfaces = surfaces.to(device)
 
-        # Build source embeddings matrix from current model (concatenate in/out as in example)
+        # Build source embeddings matrix from current model
         src_emb = torch.cat([
             self.model.get_input_embeddings().weight.data,
             self.model.get_output_embeddings().weight.data
         ], dim=1).to(device)
 
-        # surfaces -> hypernet prediction (adapt call to hypernet API)
+        # Predict embeddings with hypernet
         with torch.no_grad():
             pred_in, pred_out, _ = self.hypernet(
-                torch.from_numpy(surfaces).to(device),
-                source_embeddings=src_emb
+                surfaces,
+               source_embeddings=src_emb
             )
 
-        # pred_in/out shape: (num_tokens, embedding_dim) etc. Convert to CPU/torch tensors
-        # Map predicted embeddings to tokens_list order
+        # Map predicted embeddings to tokens
         result = {}
         for i, t in enumerate(tokens_list):
             result[t] = (pred_in[i].detach().cpu(), pred_out[i].detach().cpu())
