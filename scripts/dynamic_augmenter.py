@@ -50,7 +50,7 @@ class DynamicAugmenter:
         self.model.resize_token_embeddings(new_size)
         self.current_vocab_size = new_size
 
-    def _predict_embeddings_for_tokens(self, tokens_list):
+    def _predict_embeddings_for_tokens(self, tokens_list, device='cpu'):
         """
         Use hypernet to predict embeddings for tokens_list (list of token strings).
         Returns dict token -> (pred_in, pred_out) as torch tensors on device.
@@ -94,7 +94,7 @@ class DynamicAugmenter:
 
         return result
 
-    def add_and_assign_new_tokens(self, new_token_strs):
+    def add_and_assign_new_tokens(self, new_token_strs, device='cpu'):
         """
         For token strings not in base vocab and not cached:
            - predict embeddings with hypernet
@@ -120,7 +120,7 @@ class DynamicAugmenter:
         predicted = {}
         for i in range(0, len(to_create), CHUNK):
             chunk = to_create[i:i+CHUNK]
-            pred_chunk = self._predict_embeddings_for_tokens(chunk)
+            pred_chunk = self._predict_embeddings_for_tokens(chunk, device=device)
             predicted.update(pred_chunk)
 
         # Now allocate ids and ensure capacity
@@ -175,7 +175,7 @@ class DynamicAugmenter:
 
         return mapping
 
-    def tokens_to_ids(self, tokenized_batch):
+    def tokens_to_ids(self, tokenized_batch, device='cpu'):
         """
         Convert a batch tokenized as lists of token strings (dynamic tokens)
         into lists of token ids (ints) using base vocab + cache.
@@ -190,7 +190,7 @@ class DynamicAugmenter:
         bad = [t for t in new_tokens if "Ġ" in t or "▁" in t]
         print("Bad tokens:", bad[:10])
         # ensure they are created/assigned
-        mapping = self.add_and_assign_new_tokens(new_tokens)
+        mapping = self.add_and_assign_new_tokens(new_tokens, device=device)
         # Now map sequences
         out_ids = []
         for seq in tokenized_batch:
