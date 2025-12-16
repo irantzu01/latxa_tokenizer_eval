@@ -126,28 +126,29 @@ print("DynamicAugmenter ready.")
 choice_token_ids = augmenter.tokens_to_ids(item["dynamic_tokens"])
 print("Token IDs for dynamic tokens obtained via DynamicAugmenter.")
 
+print(type(dynamic_choice_tokens), type(dynamic_choice_tokens[0]))
 
-def build_batch_tensors(batch_ids, pad_id, device):
-    max_len = max(len(seq) for seq in batch_ids)
+# def build_batch_tensors(batch_ids, pad_id, device):
+#     max_len = max(len(seq) for seq in batch_ids)
 
-    input_ids = torch.full(
-        (len(batch_ids), max_len),
-        pad_id,
-        dtype=torch.long,
-        device=device
-    )
+#     input_ids = torch.full(
+#         (len(batch_ids), max_len),
+#         pad_id,
+#         dtype=torch.long,
+#         device=device
+#     )
 
-    attention_mask = torch.zeros_like(input_ids)
+#     attention_mask = torch.zeros_like(input_ids)
 
-    for i, seq in enumerate(batch_ids):
-        seq = torch.tensor(seq, device=device)
-        input_ids[i, :len(seq)] = seq
-        attention_mask[i, :len(seq)] = 1
+#     for i, seq in enumerate(batch_ids):
+#         seq = torch.tensor(seq, device=device)
+#         input_ids[i, :len(seq)] = seq
+#         attention_mask[i, :len(seq)] = 1
 
-    return input_ids, attention_mask
+#     return input_ids, attention_mask
 
-pad_id = latxa_tokenizer.pad_token_id or latxa_tokenizer.eos_token_id
-input_ids, attention_mask = build_batch_tensors(choice_token_ids, pad_id, device)
-print("Batch tensors built for model input.")
-print("Input IDs shape:", input_ids.shape)
-print("Attention mask shape:", attention_mask.shape)
+# pad_id = latxa_tokenizer.pad_token_id or latxa_tokenizer.eos_token_id
+# input_ids, attention_mask = build_batch_tensors(choice_token_ids, pad_id, device)
+# print("Batch tensors built for model input.")
+# print("Input IDs shape:", input_ids.shape)
+# print("Attention mask shape:", attention_mask.shape)
