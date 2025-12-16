@@ -11,6 +11,8 @@ from tokenizations.dynamic_bpe import Dynamic_BPE
 from transformers import AutoTokenizer, AutoModel, AutoModelForCausalLM
 import torch
 from zett.utils import get_surface_form_matrix
+import torch
+import numpy as np
 
 
 
@@ -69,6 +71,15 @@ class DynamicAugmenter:
         # Some versions return a tuple
         if isinstance(surfaces, tuple):
             surfaces = surfaces[0]
+
+        # Convert to torch tensor and move to device
+        if isinstance(surfaces, np.ndarray):
+            surfaces = torch.from_numpy(surfaces).to(device)
+        elif isinstance(surfaces, torch.Tensor):
+            surfaces = surfaces.to(device)
+        else:
+            raise TypeError(f"Expected np.ndarray or torch.Tensor, got {type(surfaces)}")
+
 
         # If it’s already a tensor, just move to device
         surfaces = surfaces.to(device)
