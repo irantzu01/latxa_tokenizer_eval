@@ -106,11 +106,11 @@ print("Dynamic tokenization completed for evaluation items.")
 from dynamic_augmenter import DynamicAugmenter
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = model.to(device)
 
 #Load Latxa tokenizer and model
 tokenizer_latxa = AutoTokenizer.from_pretrained("HiTZ/latxa-7b-v1.2")
 model = AutoModelForCausalLM.from_pretrained("HiTZ/latxa-7b-v1.2")
+model = model.to(device)
 print("Latxa model and tokenizer loaded.")
 
 augmenter = DynamicAugmenter(
