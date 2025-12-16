@@ -26,13 +26,12 @@ class DynamicAugmenter:
     """
 
     def __init__(self, model, latxa_tokenizer, hypernet, hypernet_tokenizer,
-                 source_model, cache_limit=50000, device=None):
+                 cache_limit=50000, device=None):
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = model.to(self.device)
         self.latxa_tokenizer = latxa_tokenizer
         self.hypernet = hypernet.to(self.device)
         self.hypernet_tokenizer = hypernet_tokenizer
-        self.source_model = source_model
         self.vocab = latxa_tokenizer.get_vocab()
         self.reverse_vocab = {v:k for k,v in self.vocab.items()}
         self.base_vocab_size = len(self.vocab)
@@ -74,13 +73,6 @@ class DynamicAugmenter:
 
         surfaces = surfaces.to(self.device)
 
-        # Build source embeddings matrix from source model
-        src_emb = torch.cat([
-            self.source_model.get_input_embeddings().weight,
-            self.source_model.get_output_embeddings().weight,],
-        dim=1).to(device)
-
-        # Predict embeddings with hypernet
         with torch.no_grad():
             pred_in, pred_out, _ = self.hypernet(surfaces)
 

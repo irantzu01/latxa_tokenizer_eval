@@ -69,18 +69,6 @@ dynamic_bpe = Dynamic_BPE(
 print("Hypernetwork + tokenizer + Dynamic BPE ready.")
 
 
-#Load source model
-from transformers import AutoModelForCausalLM
-
-source_model = AutoModelForCausalLM.from_pretrained(
-    "meta-llama/Meta-Llama-3-8B",
-    torch_dtype=torch.float16,
-    device_map="cpu"   # embeddings only, CPU is fine
-)
-source_model.eval()
-
-
-
 def dynamic_tokenize_texts(texts, dynamic_bpe, batch_size=128, max_merges=10):
     """
     texts: list[str]
@@ -133,7 +121,6 @@ augmenter = DynamicAugmenter(
     latxa_tokenizer=latxa_tokenizer,
     hypernet=hypernet,
     hypernet_tokenizer=hypernet_tokenizer,
-    source_model=source_model,
     cache_limit=50_000,   # safe default
     device=device
 )
