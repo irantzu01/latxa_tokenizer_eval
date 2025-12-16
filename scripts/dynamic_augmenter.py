@@ -178,6 +178,9 @@ class DynamicAugmenter:
         uniques = set(t for seq in tokenized_batch for t in seq)
         new_tokens = [t for t in uniques if t not in self.vocab]
         new_tokens = [normalize_dynamic_token(t) for t in new_tokens]
+        #Make sure to normalize dynamic tokens
+        bad = [t for t in new_tokens if "Ġ" in t or "▁" in t]
+        print("Bad tokens:", bad[:10])
         # ensure they are created/assigned
         mapping = self.add_and_assign_new_tokens(new_tokens)
         # Now map sequences
