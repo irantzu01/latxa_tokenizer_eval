@@ -82,10 +82,7 @@ class DynamicAugmenter:
 
         # Predict embeddings with hypernet
         with torch.no_grad():
-            pred_in, pred_out, _ = self.hypernet(
-                surfaces,
-                source_embeddings=src_emb
-            )
+            pred_in, pred_out, _ = self.hypernet(surfaces)
 
         result = {}
         for i, t in enumerate(tokens_list):
