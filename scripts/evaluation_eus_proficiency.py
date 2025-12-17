@@ -29,8 +29,8 @@ def format_prompt(question, candidates):
 
 
 # Load EusProficiency dataset
-ds = load_dataset("HiTZ/EusProficiency", split="test")
-
+#ds = load_dataset("HiTZ/EusProficiency", split="test")
+ds = load_dataset("HiTZ/EusReading", split="test")
 
 # Prepare evaluation items
 CHOICES = [" A", " B", " C", " D"]
@@ -194,4 +194,4 @@ for item in tqdm(evaluation_items, desc="Evaluating"):
         correct += 1
 
 accuracy = correct / len(evaluation_items)
-print(f"\nFinal accuracy (Dynamic BPE segmentation + Latxa vocab): {accuracy:.4f}")
+print(f"\nFinal accuracy on EusReading (Dynamic BPE segmentation + Latxa vocab): {accuracy:.4f}")
