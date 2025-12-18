@@ -30,22 +30,74 @@ def format_prompt(question, candidates):
 
 # Load EusProficiency dataset
 #ds = load_dataset("HiTZ/EusProficiency", split="test")
+
+# # Prepare evaluation items
+# CHOICES = [" A", " B", " C", " D"]
+# evaluation_items = []
+
+# for item in ds:
+#     prompt = format_prompt(item["question"], item["candidates"])
+#     choice_texts = [prompt + choice for choice in CHOICES]
+
+#     evaluation_items.append({
+#         "choice_texts": choice_texts,  # list[str] length 4
+#         "answer": item["answer"]       # int 0–3
+#     })
+
+# print("Evaluation items prepared:", len(evaluation_items))
+
+def format_prompt_reading(context, question, options):
+    """
+    Builds a multiple-choice prompt with a variable number of options.
+    """
+    letters = ["A", "B", "C", "D", "E", "F"]
+
+    prompt = f"Pasartea: {context}\n\n"
+    prompt += f"Galdera: {question}\n"
+
+    for i, opt in enumerate(options):
+        if opt is None or opt.strip() == "":
+            continue
+        prompt += f"{letters[i]}. {opt}\n"
+
+    prompt += "Erantzuna:"
+    return prompt
+
+
+# Load EusReading dataset
 ds = load_dataset("HiTZ/EusReading", split="test")
 
-# Prepare evaluation items
-CHOICES = [" A", " B", " C", " D"]
 evaluation_items = []
 
 for item in ds:
-    prompt = format_prompt(item["question"], item["candidates"])
-    choice_texts = [prompt + choice for choice in CHOICES]
+    options = item["options"]  # <-- confirm key name, usually "options"
+
+    # Remove empty options
+    options = [o for o in options if o and o.strip()]
+
+    if len(options) < 2:
+        continue  # skip broken items
+
+    prompt = format_prompt_reading(
+        context=item["context"],
+        question=item["question"],
+        options=options
+    )
+
+    choice_texts = []
+    letters = [" A", " B", " C", " D", " E", " F"]
+
+    for i in range(len(options)):
+        choice_texts.append(prompt + letters[i])
 
     evaluation_items.append({
-        "choice_texts": choice_texts,  # list[str] length 4
-        "answer": item["answer"]       # int 0–3
+        "choice_texts": choice_texts,
+        "answer": item["answer"]  # integer index
     })
 
-print("Evaluation items prepared:", len(evaluation_items))
+print("Prepared EusReading items:", len(evaluation_items))
+
+
 
 # Dynamic BPE tokenizer
 hypernet_tokenizer = AutoTokenizer.from_pretrained(
