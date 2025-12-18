@@ -46,7 +46,7 @@ def format_prompt(question, candidates):
 
 # print("Evaluation items prepared:", len(evaluation_items))
 
-def format_prompt_reading(context, question, options):
+def format_prompt_reading(context, question, candidates):
     """
     Builds a multiple-choice prompt with a variable number of options.
     """
@@ -55,7 +55,7 @@ def format_prompt_reading(context, question, options):
     prompt = f"Pasartea: {context}\n\n"
     prompt += f"Galdera: {question}\n"
 
-    for i, opt in enumerate(options):
+    for i, opt in enumerate(candidates):
         if opt is None or opt.strip() == "":
             continue
         prompt += f"{letters[i]}. {opt}\n"
@@ -70,24 +70,24 @@ ds = load_dataset("HiTZ/EusReading", split="test")
 evaluation_items = []
 
 for item in ds:
-    options = item["options"]  # <-- confirm key name, usually "options"
+    candidates = item["candidates"]  # <-- confirm key name, usually "options"
 
     # Remove empty options
-    options = [o for o in options if o and o.strip()]
+    candidates = [o for o in candidates if o and o.strip()]
 
-    if len(options) < 2:
+    if len(candidates) < 2:
         continue  # skip broken items
 
     prompt = format_prompt_reading(
         context=item["context"],
         question=item["question"],
-        options=options
+        candidates=candidates
     )
 
     choice_texts = []
     letters = [" A", " B", " C", " D", " E", " F"]
 
-    for i in range(len(options)):
+    for i in range(len(candidates)):
         choice_texts.append(prompt + letters[i])
 
     evaluation_items.append({
