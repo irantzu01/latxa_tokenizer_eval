@@ -1,0 +1,11 @@
+Evaluation results
+
+EusProficiency;
+Latxa accuracy: 0.3244341265235055
+Final accuracy (Dynamic BPE segmentation + Latxa vocab): 0.2411
+
+EusReading;
+Latxa accuracy: 0.3039772727272727
+Final accuracy (Dynamic BPE segmentation + Latxa vocab): 0.2472
+
+
