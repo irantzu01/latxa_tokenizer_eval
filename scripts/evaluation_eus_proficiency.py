@@ -16,36 +16,6 @@ import numpy as np
 
 
 
-# Prompt formatting
-def format_prompt(question, candidates):
-    return (
-        f"Galdera: {question}\n"
-        f"A: {candidates[0]}\n"
-        f"B: {candidates[1]}\n"
-        f"C: {candidates[2]}\n"
-        f"D: {candidates[3]}\n"
-        f"Erantzuna:"
-    )
-
-
-# Load EusProficiency dataset
-#ds = load_dataset("HiTZ/EusProficiency", split="test")
-
-# # Prepare evaluation items
-# CHOICES = [" A", " B", " C", " D"]
-# evaluation_items = []
-
-# for item in ds:
-#     prompt = format_prompt(item["question"], item["candidates"])
-#     choice_texts = [prompt + choice for choice in CHOICES]
-
-#     evaluation_items.append({
-#         "choice_texts": choice_texts,  # list[str] length 4
-#         "answer": item["answer"]       # int 0–3
-#     })
-
-# print("Evaluation items prepared:", len(evaluation_items))
-
 def format_prompt_reading(context, question, candidates):
     """
     Builds a multiple-choice prompt with a variable number of options.
@@ -63,9 +33,12 @@ def format_prompt_reading(context, question, candidates):
     prompt += "Erantzuna:"
     return prompt
 
-
+# Load EusProficiency dataset
+#ds = load_dataset("HiTZ/EusProficiency", split="test")
 # Load EusReading dataset
 ds = load_dataset("HiTZ/EusReading", split="test")
+#Load EusExams datasets
+
 
 evaluation_items = []
 
@@ -154,8 +127,9 @@ print("Dynamic tokenization completed.")
 
 # Load Latxa model and tokenizer
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#latxa_tokenizer = AutoTokenizer.from_pretrained("HiTZ/latxa-7b-v1.2")
 latxa_tokenizer = AutoTokenizer.from_pretrained("HiTZ/latxa-7b-v1.2")
-model = AutoModelForCausalLM.from_pretrained("HiTZ/latxa-7b-v1.2")
+model = AutoModelForCausalLM.from_pretrained("HiTZ/latxa-70b-v1.2")
 model.to(device)
 model.eval()
 print("Latxa model and tokenizer loaded.")
