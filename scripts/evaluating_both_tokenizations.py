@@ -64,23 +64,20 @@ for item in ds:
         "answer": item["answer"]        # int: 0–3
     })
 
-for item in tqdm(evaluation_items, desc="Dynamic BPE"):
-    dynamic_tokens = dynamic_tokenize_texts(
-        item["choice_texts"],
-        dynamic_bpe,
-        batch_size=4
-    )
-    item["dynamic_tokens"] = dynamic_tokens
-    latxa_tokens = [
-        latxa_tokenizer.tokenize(text)
-        for text in item["choice_texts"]
-    ]
-    item["latxa_tokens"] = latxa_tokens
-print("Dynamic tokenization and latxa tokenization completed.")
+# for item in tqdm(evaluation_items, desc="Dynamic BPE"):
+#     dynamic_tokens = dynamic_tokenize_texts(
+#         item["choice_texts"],
+#         dynamic_bpe,
+#         batch_size=4
+#     )
+#     item["dynamic_tokens"] = dynamic_tokens
+#     latxa_tokens = [
+#         latxa_tokenizer.tokenize(text)
+#         for text in item["choice_texts"]
+#     ]
+#     item["latxa_tokens"] = latxa_tokens
+# print("Dynamic tokenization and latxa tokenization completed.")
 
-for i, tokens in enumerate(latxa_tokens):
-    print(item["choice_texts"][i])
-    print(tokens)
 
 # # Evaluation loop for Latxa with Dynamic BPE segmentation
 # tokenized_dyn_out = open("cache/EusProficiency_dynamic_tokenized.jsonl", "w")
@@ -129,8 +126,8 @@ correct = 0
 
 for idx, item in enumerate(tqdm(evaluation_items, desc="Evaluating Latxa")):
     choice_ids = [
-        latxa_tokenizer.encode("".join(tokens), add_special_tokens=False)
-        for tokens in item["latxa_tokens"]
+        latxa_tokenizer.encode(text, add_special_tokens=False)
+        for text in choice_texts
     ]
     # save tokenization
     tokenized_latxa_out.write(json.dumps({
