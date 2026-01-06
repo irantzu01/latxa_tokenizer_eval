@@ -69,101 +69,26 @@ def build_fewshot_context(ds, current_idx, k=5, seed=42):
 
 
 
-# CHOICES = [" A", " B", " C", " D"]
-
-# pad_id = latxa_tokenizer.pad_token_id
-# if pad_id is None:
-#     pad_id = latxa_tokenizer.eos_token_id
-
-# with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl", "w") as f:
-#     for idx, item in enumerate(tqdm(ds, desc="Tokenizing (few-shot)")):
-
-#         fewshot_context = build_fewshot_context(ds, idx, k=5)
-#         prompt_text = fewshot_context + "\n\n" + build_doc_text(item)
-
-#         prompt_ids = latxa_tokenizer.encode(
-#             prompt_text, add_special_tokens=False
-#         )
-
-#         choice_ids = {
-#             c.strip(): latxa_tokenizer.encode(c, add_special_tokens=False)
-#             for c in CHOICES
-#         }
-
-#         f.write(json.dumps({
-#             "id": idx,
-#             "prompt_ids": prompt_ids,
-#             "choice_ids": choice_ids,
-#             "gold": item["answer"]
-#         }) + "\n")
-
-# correct = 0
-# total = 0
-
-# with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl") as f:
-#     for line in tqdm(f, desc="Evaluating"):
-#         item = json.loads(line)
-
-#         full_ids = [
-#             item["prompt_ids"] + item["choice_ids"][c]
-#             for c in ["A", "B", "C", "D"]
-#         ]
-
-#         input_ids, attention_mask = build_batch_tensors(
-#             full_ids, pad_id, device
-#         )
-
-#         scores = score_choices(model, input_ids, attention_mask)
-#         pred = torch.argmax(scores).item()
-
-#         if pred == item["gold"]:
-#             correct += 1
-#         total += 1
-
-# accuracy = correct / total
-# print(f"Latxa 5-shot (LM Eval style) accuracy: {accuracy:.4f}")
-
-import json
-from tqdm import tqdm
-
 CHOICES = [" A", " B", " C", " D"]
 
 pad_id = latxa_tokenizer.pad_token_id
 if pad_id is None:
     pad_id = latxa_tokenizer.eos_token_id
 
-with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl", "w") as f:
-    for idx, item in enumerate(tqdm(ds, desc="Dynamic few-shot tokenization")):
+with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl", "w") as f:
+    for idx, item in enumerate(tqdm(ds, desc="Tokenizing (few-shot)")):
 
-        # build full prompt text
         fewshot_context = build_fewshot_context(ds, idx, k=5)
         prompt_text = fewshot_context + "\n\n" + build_doc_text(item)
 
-        # dynamic tokenize prompt
-        prompt_dynamic_tokens = dynamic_tokenize_texts(
-            [prompt_text],
-            dynamic_bpe,
-            batch_size=1
-        )[0]
-
-        prompt_ids = dynamic_tokens_to_latxa_ids(
-            prompt_dynamic_tokens,
-            latxa_tokenizer
+        prompt_ids = latxa_tokenizer.encode(
+            prompt_text, add_special_tokens=False
         )
 
-        # dynamic tokenize choices
-        choice_ids = {}
-        for c in CHOICES:
-            dyn_tokens = dynamic_tokenize_texts(
-                [c],
-                dynamic_bpe,
-                batch_size=1
-            )[0]
-
-            choice_ids[c.strip()] = dynamic_tokens_to_latxa_ids(
-                dyn_tokens,
-                latxa_tokenizer
-            )
+        choice_ids = {
+            c.strip(): latxa_tokenizer.encode(c, add_special_tokens=False)
+            for c in CHOICES
+        }
 
         f.write(json.dumps({
             "id": idx,
@@ -175,9 +100,8 @@ with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl", "w") as f:
 correct = 0
 total = 0
 
-with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl") as f:
-    for line in tqdm(f, desc="Evaluating (dynamic BPE)"):
-
+with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl") as f:
+    for line in tqdm(f, desc="Evaluating"):
         item = json.loads(line)
 
         full_ids = [
@@ -197,4 +121,4 @@ with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl") as f:
         total += 1
 
 accuracy = correct / total
-print(f"Dynamic BPE 5-shot accuracy: {accuracy:.4f}")
+print(f"Latxa 5-shot (LM Eval style) accuracy: {accuracy:.4f}")
