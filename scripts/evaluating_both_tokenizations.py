@@ -121,13 +121,13 @@ for item in ds:
 # Evaluation loop for Latxa with its own tokenization
 tokenized_latxa_out = open("cache/EusProficiency_latxa_tokenized_prueba.jsonl", "w")
 pred_latxa_out = open("results/EusProficiency_latxa_predictions_prueba.jsonl", "w")
-pad_id = latxa_tokenizer.pad_token_id or latxa_tokenizer.eos_token_id
+pad_id = latxa_tokenizer.pad_token_id
 correct = 0
 
-for idx, item in enumerate(tqdm(evaluation_items, desc="Evaluating Latxa")):
+for idx, item in enumerate(tqdm(evaluation_items)):
     choice_ids = [
         latxa_tokenizer.encode(text, add_special_tokens=False)
-        for text in choice_texts
+        for text in item["choice_texts"]
     ]
     # save tokenization
     tokenized_latxa_out.write(json.dumps({
@@ -136,19 +136,8 @@ for idx, item in enumerate(tqdm(evaluation_items, desc="Evaluating Latxa")):
         "choice_ids": choice_ids,
         "answer": item["answer"]
     }) + "\n")
-    # optional: score only the answer portion
-    if "prompt_len" in item:
-        answer_choice_ids = [ids[item["prompt_len"]:] for ids in choice_ids]
-    else:
-        answer_choice_ids = choice_ids
-    input_ids, attention_mask = build_batch_tensors(
-        answer_choice_ids,
-        pad_id,
-        device
-    )
-    scores = score_choices(model, input_ids, attention_mask)
-    # length normalization
-    scores = scores / attention_mask.sum(dim=1)
+    input_ids, attention_mask = build_batch_tensors(choice_ids, pad_id, device)
+    scores = score_choices(model, input_ids, attention_mask)  # no length normalization
     pred = torch.argmax(scores).item()
     pred_latxa_out.write(json.dumps({
         "id": idx,
@@ -160,8 +149,8 @@ for idx, item in enumerate(tqdm(evaluation_items, desc="Evaluating Latxa")):
     if pred == item["answer"]:
         correct += 1
 
-accuracy_latxa = correct / len(evaluation_items)
-print(f"\nFinal accuracy on EusProficiency (Latxa own tokenization): {accuracy_latxa:.4f}")
+accuracy = correct / len(evaluation_items)
+print(f"Accuracy: {accuracy:.4f}")
 
 tokenized_latxa_out.close()
 pred_latxa_out.close()
