@@ -1,30 +1,20 @@
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 
-# ========================
-# SETTINGS
-# ========================
+# Load model and tokenizer
 MODEL_NAME = "HiTZ/latxa-7b-v1.1"
-
-# ========================
-# LOAD MODEL AND TOKENIZER
-# ========================
 print("Loading tokenizer and model (CPU)...")
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, device_map="cpu")
 print("Model loaded on CPU.")
 
-# ========================
-# CREATE TEXT-GENERATION PIPELINE
-# ========================
+# Text generation pipeline
 generator = pipeline(
     "text-generation",
     model=model,
     tokenizer=tokenizer
 )
 
-# ========================
-# INTERACTIVE PROMPT LOOP
-# ========================
+# Interactive prompt loop
 print("\n=== Latxa Playground ===\n")
 while True:
     prompt = input("Enter a Basque prompt (or 'exit' to quit):\n> ")
@@ -60,5 +50,3 @@ while True:
 
     for i, out in enumerate(outputs):
         print(f"\n--- Option {i+1} ---\n{out['generated_text']}\n")
-
-
