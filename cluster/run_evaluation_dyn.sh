@@ -7,7 +7,6 @@
 #SBATCH --gres=gpu:A100:1
 #SBATCH --time=02:00:00
 #SBATCH --partition=react
-#SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH -C inet
 
 echo "Starting job $SLURM_JOB_ID on node $(hostname)"
