@@ -128,21 +128,24 @@ for idx, item in enumerate(tqdm(evaluation_items)):
         latxa_tokenizer.encode(text, add_special_tokens=False)
         for text in item["choice_texts"]
     ]
+
     input_ids, attention_mask = build_batch_tensors(choice_ids, pad_id, device)
-    scores = score_choices(model, input_ids, attention_mask)  # no length normalization
+    scores = score_choices(model, input_ids, attention_mask)  # no normalization
     pred = torch.argmax(scores).item()
-    # pred_latxa_out.write(json.dumps({
-    #     "id": idx,
-    #     "scores": scores.tolist(),
-    #     "prediction": pred,
-    #     "gold": item["answer"],
-    #     "correct": pred == item["answer"]
-    # }) + "\n")
+
+    pred_latxa_out.write(json.dumps({
+        "id": idx,
+        "scores": scores.tolist(),
+        "prediction": pred,
+        "gold": item["answer"],
+        "correct": pred == item["answer"]
+    }) + "\n")
+
     if pred == item["answer"]:
         correct += 1
 
 accuracy = correct / len(evaluation_items)
-print(f"Accuracy: {accuracy:.4f}")
+print(f"Final accuracy: {accuracy:.4f}")
 
 # tokenized_latxa_out.close()
 # pred_latxa_out.close()
