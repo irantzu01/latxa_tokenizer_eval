@@ -121,50 +121,50 @@ for i, tokens in enumerate(latxa_tokens):
 # tokenized_dyn_out.close()
 # pred_dyn_out.close()
 
-# # Evaluation loop for Latxa with its own tokenization
-# tokenized_latxa_out = open("cache/EusProficiency_latxa_tokenized.jsonl", "w")
-# pred_latxa_out = open("results/EusProficiency_latxa_predictions.jsonl", "w")
-# pad_id = latxa_tokenizer.pad_token_id or latxa_tokenizer.eos_token_id
-# correct = 0
+# Evaluation loop for Latxa with its own tokenization
+tokenized_latxa_out = open("cache/EusProficiency_latxa_tokenized_prueba.jsonl", "w")
+pred_latxa_out = open("results/EusProficiency_latxa_predictions_prueba.jsonl", "w")
+pad_id = latxa_tokenizer.pad_token_id or latxa_tokenizer.eos_token_id
+correct = 0
 
-# for idx, item in enumerate(tqdm(evaluation_items, desc="Evaluating Latxa")):
-#     choice_ids = [
-#         latxa_tokenizer.encode("".join(tokens), add_special_tokens=False)
-#         for tokens in item["latxa_tokens"]
-#     ]
-#     # save tokenization
-#     tokenized_latxa_out.write(json.dumps({
-#         "id": idx,
-#         "latxa_tokens": item["latxa_tokens"],
-#         "choice_ids": choice_ids,
-#         "answer": item["answer"]
-#     }) + "\n")
-#     # optional: score only the answer portion
-#     if "prompt_len" in item:
-#         answer_choice_ids = [ids[item["prompt_len"]:] for ids in choice_ids]
-#     else:
-#         answer_choice_ids = choice_ids
-#     input_ids, attention_mask = build_batch_tensors(
-#         answer_choice_ids,
-#         pad_id,
-#         device
-#     )
-#     scores = score_choices(model, input_ids, attention_mask)
-#     # length normalization
-#     scores = scores / attention_mask.sum(dim=1)
-#     pred = torch.argmax(scores).item()
-#     pred_latxa_out.write(json.dumps({
-#         "id": idx,
-#         "scores": scores.tolist(),
-#         "prediction": pred,
-#         "gold": item["answer"],
-#         "correct": pred == item["answer"]
-#     }) + "\n")
-#     if pred == item["answer"]:
-#         correct += 1
+for idx, item in enumerate(tqdm(evaluation_items, desc="Evaluating Latxa")):
+    choice_ids = [
+        latxa_tokenizer.encode("".join(tokens), add_special_tokens=False)
+        for tokens in item["latxa_tokens"]
+    ]
+    # save tokenization
+    tokenized_latxa_out.write(json.dumps({
+        "id": idx,
+        "latxa_tokens": item["latxa_tokens"],
+        "choice_ids": choice_ids,
+        "answer": item["answer"]
+    }) + "\n")
+    # optional: score only the answer portion
+    if "prompt_len" in item:
+        answer_choice_ids = [ids[item["prompt_len"]:] for ids in choice_ids]
+    else:
+        answer_choice_ids = choice_ids
+    input_ids, attention_mask = build_batch_tensors(
+        answer_choice_ids,
+        pad_id,
+        device
+    )
+    scores = score_choices(model, input_ids, attention_mask)
+    # length normalization
+    scores = scores / attention_mask.sum(dim=1)
+    pred = torch.argmax(scores).item()
+    pred_latxa_out.write(json.dumps({
+        "id": idx,
+        "scores": scores.tolist(),
+        "prediction": pred,
+        "gold": item["answer"],
+        "correct": pred == item["answer"]
+    }) + "\n")
+    if pred == item["answer"]:
+        correct += 1
 
-# accuracy_latxa = correct / len(evaluation_items)
-# print(f"\nFinal accuracy on EusProficiency (Latxa own tokenization): {accuracy_latxa:.4f}")
+accuracy_latxa = correct / len(evaluation_items)
+print(f"\nFinal accuracy on EusProficiency (Latxa own tokenization): {accuracy_latxa:.4f}")
 
-# tokenized_latxa_out.close()
-# pred_latxa_out.close()
+tokenized_latxa_out.close()
+pred_latxa_out.close()
