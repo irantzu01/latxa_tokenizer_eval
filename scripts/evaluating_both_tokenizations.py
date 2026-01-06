@@ -120,7 +120,7 @@ print("EusProficiency dataset loaded and evaluation items prepared.")
 # Evaluation loop for Latxa with its own tokenization
 #tokenized_latxa_out = open("cache/EusProficiency_latxa_tokenized_prueba.jsonl", "w")
 #pred_latxa_out = open("results/EusProficiency_latxa_predictions_prueba.jsonl", "w")
-pad_id = latxa_tokenizer.pad_token_id
+pad_id = latxa_tokenizer.pad_token_id or latxa_tokenizer.eos_token_id
 correct = 0
 
 for idx, item in enumerate(tqdm(evaluation_items)):
