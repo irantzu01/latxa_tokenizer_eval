@@ -25,7 +25,7 @@ import random
 import torch
 from tqdm import tqdm
 
-test_ds  = load_dataset("HiTZ/EusProficiency", split="test")
+ds  = load_dataset("HiTZ/EusProficiency", split="test")
 
 
 # Load model and tokenizers
