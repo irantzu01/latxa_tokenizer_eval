@@ -25,7 +25,6 @@ import random
 import torch
 from tqdm import tqdm
 
-train_ds = load_dataset("HiTZ/EusProficiency", split="train")
 test_ds  = load_dataset("HiTZ/EusProficiency", split="test")
 
 
@@ -60,11 +59,14 @@ def build_fewshot_example(item):
     answer_letter = ["A", "B", "C", "D"][item["answer"]]
     return build_doc_text(item) + " " + answer_letter
 
-def build_fewshot_context(train_ds, k=5, seed=42):
-    rng = random.Random(seed)
-    examples = rng.sample(list(train_ds), k)
-    texts = [build_fewshot_example(ex) for ex in examples]
+def build_fewshot_context(ds, current_idx, k=5, seed=42):
+    rng = random.Random(seed + current_idx)
+    # pool excludes current example
+    pool = [ds[i] for i in range(len(ds)) if i != current_idx]
+    fewshot_examples = rng.sample(pool, k)
+    texts = [build_fewshot_example(ex) for ex in fewshot_examples]
     return "\n\n".join(texts)
+
 
 import json
 
@@ -74,11 +76,10 @@ pad_id = latxa_tokenizer.pad_token_id
 if pad_id is None:
     pad_id = latxa_tokenizer.eos_token_id
 
-fewshot_context = build_fewshot_context(train_ds, k=5)
-
 with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl", "w") as f:
-    for idx, item in enumerate(tqdm(test_ds, desc="Tokenizing")):
+    for idx, item in enumerate(tqdm(ds, desc="Tokenizing (few-shot)")):
 
+        fewshot_context = build_fewshot_context(ds, idx, k=5)
         prompt_text = fewshot_context + "\n\n" + build_doc_text(item)
 
         prompt_ids = latxa_tokenizer.encode(
@@ -98,6 +99,7 @@ with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl", "w") as f:
         }) + "\n")
 
 correct = 0
+total = 0
 
 with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl") as f:
     for line in tqdm(f, desc="Evaluating"):
@@ -117,7 +119,7 @@ with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl") as f:
 
         if pred == item["gold"]:
             correct += 1
+        total += 1
 
-accuracy = correct / len(test_ds)
-print(f"Latxa few-shot accuracy: {accuracy:.4f}")
-
+accuracy = correct / total
+print(f"Latxa 5-shot (LM Eval style) accuracy: {accuracy:.4f}")
