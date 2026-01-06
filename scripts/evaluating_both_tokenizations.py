@@ -133,13 +133,13 @@ for idx, item in enumerate(tqdm(evaluation_items)):
     scores = score_choices(model, input_ids, attention_mask)  # no normalization
     pred = torch.argmax(scores).item()
 
-    pred_latxa_out.write(json.dumps({
-        "id": idx,
-        "scores": scores.tolist(),
-        "prediction": pred,
-        "gold": item["answer"],
-        "correct": pred == item["answer"]
-    }) + "\n")
+    # pred_latxa_out.write(json.dumps({
+    #     "id": idx,
+    #     "scores": scores.tolist(),
+    #     "prediction": pred,
+    #     "gold": item["answer"],
+    #     "correct": pred == item["answer"]
+    # }) + "\n")
 
     if pred == item["answer"]:
         correct += 1
