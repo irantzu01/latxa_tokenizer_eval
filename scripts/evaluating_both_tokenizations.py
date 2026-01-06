@@ -40,7 +40,6 @@ dynamic_bpe = Dynamic_BPE(
 )
 
 
-
 #Load the EusProficiency dataset and prepare evaluation items
 def format_prompt(question, candidates):
     return (
@@ -72,15 +71,17 @@ for item in tqdm(evaluation_items, desc="Dynamic BPE"):
         batch_size=4
     )
     item["dynamic_tokens"] = dynamic_tokens
-    # latxa_tokens = [
-    #     latxa_tokenizer.tokenize(text)
-    #     for text in item["choice_texts"]
-    # ]
-    # item["latxa_tokens"] = latxa_tokens
+    latxa_tokens = [
+        latxa_tokenizer.tokenize(text)
+        for text in item["choice_texts"]
+    ]
+    item["latxa_tokens"] = latxa_tokens
 print("Dynamic tokenization and latxa tokenization completed.")
 
 
 # Evaluation loop for Latxa with Dynamic BPE segmentation
+tokenized_dyn_out = open("cache/EusProficiency_dynamic_tokenized.jsonl", "w")
+pred_dyn_out = open("results/EusProficiency_dynamic_predictions.jsonl", "w")
 pad_id = latxa_tokenizer.pad_token_id or latxa_tokenizer.eos_token_id
 correct = 0
 for item in tqdm(evaluation_items, desc="Evaluating"):
@@ -88,6 +89,13 @@ for item in tqdm(evaluation_items, desc="Evaluating"):
         item["dynamic_tokens"],
         latxa_tokenizer
     )
+    # save tokenization ONCE
+    tokenized_dyn_out.write(json.dumps({
+        "id": idx,
+        "dynamic_tokens": item["dynamic_tokens"],
+        "choice_ids": choice_ids,          # list[list[int]]
+        "answer": item["answer"]
+    }) + "\n")
     input_ids, attention_mask = build_batch_tensors(
         choice_ids,
         pad_id,
@@ -95,19 +103,37 @@ for item in tqdm(evaluation_items, desc="Evaluating"):
     )
     scores = score_choices(model, input_ids, attention_mask)
     pred = torch.argmax(scores).item()
+    pred_dyn_out.write(json.dumps({
+    "id": idx,
+    "scores": scores.tolist(),
+    "prediction": pred,
+    "gold": item["answer"],
+    "correct": pred == item["answer"]
+    }) + "\n")
     if pred == item["answer"]:
         correct += 1
 
 accuracy_bpe = correct / len(evaluation_items)
 print(f"\nFinal accuracy on EusReading (Dynamic BPE segmentation + Latxa vocab): {accuracy_bpe:.4f}")
+tokenized_dyn_out.close()
+pred_dyn_out.close()
 
 # Evaluation loop for Latxa with its own tokenization
+tokenized_latxa_out = open("cache/EusProficiency_latxa_tokenized.jsonl", "w")
+pred_latxa_out = open("results/EusProficiency_latxa_predictions.jsonl", "w")
 correct = 0
 for item in tqdm(evaluation_items, desc="Evaluating Latxa"):
     choice_ids = [
         latxa_tokenizer.convert_tokens_to_ids(tokens)
         for tokens in item["latxa_tokens"]
     ]
+    # save tokenization ONCE
+    tokenized_latxa_out.write(json.dumps({
+        "id": idx,
+        "latxa_tokens": item["latxa_tokens"],
+        "choice_ids": choice_ids,
+        "answer": item["answer"]
+    }) + "\n")
     input_ids, attention_mask = build_batch_tensors(
         choice_ids,
         pad_id,
@@ -115,8 +141,18 @@ for item in tqdm(evaluation_items, desc="Evaluating Latxa"):
     )
     scores = score_choices(model, input_ids, attention_mask)
     pred = torch.argmax(scores).item()
+    pred_latxa_out.write(json.dumps({
+    "id": idx,
+    "scores": scores.tolist(),
+    "prediction": pred,
+    "gold": item["answer"],
+    "correct": pred == item["answer"]
+    }) + "\n")
     if pred == item["answer"]:
         correct += 1
 
 accuracy_latxa = correct / len(evaluation_items)
 print(f"\nFinal accuracy on EusReading (Latxa own tokenization): {accuracy_latxa:.4f}")
+
+tokenized_latxa_out.close()
+pred_latxa_out.close()
