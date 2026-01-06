@@ -14,13 +14,19 @@ from evaluation_helper_functions import (
     score_choices
 )
 
-
 from tokenizations.dynamic_bpe import Dynamic_BPE
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 from datasets import load_dataset
 from tqdm import tqdm
 import numpy as np
+from datasets import load_dataset
+import random
+import torch
+from tqdm import tqdm
+
+train_ds = load_dataset("HiTZ/EusProficiency", split="train")
+test_ds  = load_dataset("HiTZ/EusProficiency", split="test")
 
 
 # Load model and tokenizers
@@ -40,112 +46,78 @@ dynamic_bpe = Dynamic_BPE(
 )
 
 
-#Load the EusProficiency dataset and prepare evaluation items
-def build_choice_texts(item):
-    return f"Galdera: {item['question']}\n" \
-           f"A: {item['candidates'][0]}\n" \
-           f"B: {item['candidates'][1]}\n" \
-           f"C: {item['candidates'][2]}\n" \
-           f"D: {item['candidates'][3]}\n" \
-           f"Erantzuna:"
+def build_doc_text(item):
+    return (
+        f"Galdera: {item['question']}\n"
+        f"A: {item['candidates'][0]}\n"
+        f"B: {item['candidates'][1]}\n"
+        f"C: {item['candidates'][2]}\n"
+        f"D: {item['candidates'][3]}\n"
+        f"Erantzuna:"
+    )
 
-ds = load_dataset("HiTZ/EusProficiency", split="test")
-evaluation_items = []
-CHOICES = ["A", "B", "C", "D"]
+def build_fewshot_example(item):
+    answer_letter = ["A", "B", "C", "D"][item["answer"]]
+    return build_doc_text(item) + " " + answer_letter
 
-for item in ds:
-    prompt = build_choice_texts(item)
-    choice_texts = [prompt + " " + choice for choice in CHOICES]
-    evaluation_items.append({
-        "prompt": prompt,
-        "choice_texts": choice_texts,
-        "answer": item["answer"]
-    })
-print("EusProficiency dataset loaded and evaluation items prepared.")
+def build_fewshot_context(train_ds, k=5, seed=42):
+    rng = random.Random(seed)
+    examples = rng.sample(list(train_ds), k)
+    texts = [build_fewshot_example(ex) for ex in examples]
+    return "\n\n".join(texts)
 
-# for item in tqdm(evaluation_items, desc="Dynamic BPE"):
-#     dynamic_tokens = dynamic_tokenize_texts(
-#         item["choice_texts"],
-#         dynamic_bpe,
-#         batch_size=4
-#     )
-#     item["dynamic_tokens"] = dynamic_tokens
-#     latxa_tokens = [
-#         latxa_tokenizer.tokenize(text)
-#         for text in item["choice_texts"]
-#     ]
-#     item["latxa_tokens"] = latxa_tokens
-# print("Dynamic tokenization and latxa tokenization completed.")
+import json
 
+CHOICES = [" A", " B", " C", " D"]
 
-# # Evaluation loop for Latxa with Dynamic BPE segmentation
-# tokenized_dyn_out = open("cache/EusProficiency_dynamic_tokenized.jsonl", "w")
-# pred_dyn_out = open("results/EusProficiency_dynamic_predictions.jsonl", "w")
-# pad_id = latxa_tokenizer.pad_token_id or latxa_tokenizer.eos_token_id
-# correct = 0
-# for idx, item in enumerate(tqdm(evaluation_items, desc="Evaluating")):
-#     choice_ids = dynamic_tokens_to_latxa_ids(
-#         item["dynamic_tokens"],
-#         latxa_tokenizer
-#     )
-#     # save tokenization ONCE
-#     tokenized_dyn_out.write(json.dumps({
-#         "id": idx,
-#         "dynamic_tokens": item["dynamic_tokens"],
-#         "choice_ids": choice_ids,          # list[list[int]]
-#         "answer": item["answer"]
-#     }) + "\n")
-#     input_ids, attention_mask = build_batch_tensors(
-#         choice_ids,
-#         pad_id,
-#         device
-#     )
-#     scores = score_choices(model, input_ids, attention_mask)
-#     pred = torch.argmax(scores).item()
-#     pred_dyn_out.write(json.dumps({
-#     "id": idx,
-#     "scores": scores.tolist(),
-#     "prediction": pred,
-#     "gold": item["answer"],
-#     "correct": pred == item["answer"]
-#     }) + "\n")
-#     if pred == item["answer"]:
-#         correct += 1
+pad_id = latxa_tokenizer.pad_token_id
+if pad_id is None:
+    pad_id = latxa_tokenizer.eos_token_id
 
-# accuracy_bpe = correct / len(evaluation_items)
-# print(f"\nFinal accuracy on EusProficiency (Dynamic BPE segmentation + Latxa vocab): {accuracy_bpe:.4f}")
-# tokenized_dyn_out.close()
-# pred_dyn_out.close()
+fewshot_context = build_fewshot_context(train_ds, k=5)
 
-# Evaluation loop for Latxa with its own tokenization
-#tokenized_latxa_out = open("cache/EusProficiency_latxa_tokenized_prueba.jsonl", "w")
-#pred_latxa_out = open("results/EusProficiency_latxa_predictions_prueba.jsonl", "w")
-pad_id = latxa_tokenizer.pad_token_id or latxa_tokenizer.eos_token_id
+with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl", "w") as f:
+    for idx, item in enumerate(tqdm(test_ds, desc="Tokenizing")):
+
+        prompt_text = fewshot_context + "\n\n" + build_doc_text(item)
+
+        prompt_ids = latxa_tokenizer.encode(
+            prompt_text, add_special_tokens=False
+        )
+
+        choice_ids = {
+            c.strip(): latxa_tokenizer.encode(c, add_special_tokens=False)
+            for c in CHOICES
+        }
+
+        f.write(json.dumps({
+            "id": idx,
+            "prompt_ids": prompt_ids,
+            "choice_ids": choice_ids,
+            "gold": item["answer"]
+        }) + "\n")
+
 correct = 0
 
-for idx, item in enumerate(tqdm(evaluation_items)):
-    choice_ids = [
-        latxa_tokenizer.encode(text, add_special_tokens=False)
-        for text in item["choice_texts"]
-    ]
+with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl") as f:
+    for line in tqdm(f, desc="Evaluating"):
+        item = json.loads(line)
 
-    input_ids, attention_mask = build_batch_tensors(choice_ids, pad_id, device)
-    scores = score_choices(model, input_ids, attention_mask)  # no normalization
-    pred = torch.argmax(scores).item()
+        full_ids = [
+            item["prompt_ids"] + item["choice_ids"][c]
+            for c in ["A", "B", "C", "D"]
+        ]
 
-    # pred_latxa_out.write(json.dumps({
-    #     "id": idx,
-    #     "scores": scores.tolist(),
-    #     "prediction": pred,
-    #     "gold": item["answer"],
-    #     "correct": pred == item["answer"]
-    # }) + "\n")
+        input_ids, attention_mask = build_batch_tensors(
+            full_ids, pad_id, device
+        )
 
-    if pred == item["answer"]:
-        correct += 1
+        scores = score_choices(model, input_ids, attention_mask)
+        pred = torch.argmax(scores).item()
 
-accuracy = correct / len(evaluation_items)
-print(f"Final accuracy: {accuracy:.4f}")
+        if pred == item["gold"]:
+            correct += 1
 
-# tokenized_latxa_out.close()
-# pred_latxa_out.close()
+accuracy = correct / len(test_ds)
+print(f"Latxa few-shot accuracy: {accuracy:.4f}")
+
