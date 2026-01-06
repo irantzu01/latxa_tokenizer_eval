@@ -55,57 +55,80 @@ def build_doc_text(item):
         f"Erantzuna:"
     )
 
-def build_fewshot_example(item):
-    answer_letter = ["A", "B", "C", "D"][item["answer"]]
-    return build_doc_text(item) + " " + answer_letter
+def build_fewshot_context(ds, idx, k=5):
+    ctx = []
+    count = 0
+    for j, ex in enumerate(ds):
+        if j == idx:
+            continue
+        ctx.append(
+            build_doc_text(ex) + " " + CHOICES[ex["answer"]]
+        )
+        count += 1
+        if count == k:
+            break
+    return "\n\n".join(ctx)
 
-def build_fewshot_context(ds, current_idx, k=5, seed=42):
-    rng = random.Random(seed + current_idx)
-    # pool excludes current example
-    pool = [ds[i] for i in range(len(ds)) if i != current_idx]
-    fewshot_examples = rng.sample(pool, k)
-    texts = [build_fewshot_example(ex) for ex in fewshot_examples]
-    return "\n\n".join(texts)
 
+import json
+import torch
+from tqdm import tqdm
 
-CHOICES = [" A", " B", " C", " D"]
+CHOICES = ["A", "B", "C", "D"]
 
 pad_id = latxa_tokenizer.pad_token_id
 if pad_id is None:
     pad_id = latxa_tokenizer.eos_token_id
 
+
+def dynamic_tokens_to_text(dynamic_tokens):
+    text = ""
+    for tok in dynamic_tokens:
+        if tok.startswith("▁") or tok.startswith("Ġ"):
+            text += " " + tok[1:]
+        else:
+            text += tok
+    return text.strip()
+
+# Tokenization and Caching
 with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl", "w") as f:
     for idx, item in enumerate(tqdm(ds, desc="Dynamic few-shot tokenization")):
 
-        # build full prompt text
+        # ----- Build full prompt text -----
         fewshot_context = build_fewshot_context(ds, idx, k=5)
         prompt_text = fewshot_context + "\n\n" + build_doc_text(item)
 
-        # dynamic tokenize prompt
-        prompt_dynamic_tokens = dynamic_tokenize_texts(
+        # ----- Dynamic tokenize prompt -----
+        prompt_dyn = dynamic_tokenize_texts(
             [prompt_text],
             dynamic_bpe,
             batch_size=1
         )[0]
 
-        prompt_ids = dynamic_tokens_to_latxa_ids(
-            prompt_dynamic_tokens,
-            latxa_tokenizer
+        prompt_text_recon = dynamic_tokens_to_text(prompt_dyn)
+
+        prompt_ids = latxa_tokenizer.encode(
+            prompt_text_recon,
+            add_special_tokens=False
         )
 
-        # dynamic tokenize choices
+        # ----- Dynamic tokenize each choice -----
         choice_ids = {}
         for c in CHOICES:
-            dyn_tokens = dynamic_tokenize_texts(
-                [c],
+            dyn = dynamic_tokenize_texts(
+                [" " + c],
                 dynamic_bpe,
                 batch_size=1
             )[0]
 
-            choice_ids[c.strip()] = dynamic_tokens_to_latxa_ids(
-                dyn_tokens,
-                latxa_tokenizer
+            recon = dynamic_tokens_to_text(dyn)
+
+            ids = latxa_tokenizer.encode(
+                recon,
+                add_special_tokens=False
             )
+
+            choice_ids[c] = ids
 
         f.write(json.dumps({
             "id": idx,
@@ -114,6 +137,8 @@ with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl", "w") as f:
             "gold": item["answer"]
         }) + "\n")
 
+
+# Evaluation
 correct = 0
 total = 0
 
@@ -124,8 +149,12 @@ with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl") as f:
 
         full_ids = [
             item["prompt_ids"] + item["choice_ids"][c]
-            for c in ["A", "B", "C", "D"]
+            for c in CHOICES
         ]
+
+        # SAFETY CHECK (optional but recommended)
+        for seq in full_ids:
+            assert all(isinstance(x, int) for x in seq)
 
         input_ids, attention_mask = build_batch_tensors(
             full_ids, pad_id, device
@@ -140,3 +169,4 @@ with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl") as f:
 
 accuracy = correct / total
 print(f"Dynamic BPE 5-shot accuracy: {accuracy:.4f}")
+
