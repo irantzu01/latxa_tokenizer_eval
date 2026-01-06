@@ -84,7 +84,7 @@ tokenized_dyn_out = open("cache/EusProficiency_dynamic_tokenized.jsonl", "w")
 pred_dyn_out = open("results/EusProficiency_dynamic_predictions.jsonl", "w")
 pad_id = latxa_tokenizer.pad_token_id or latxa_tokenizer.eos_token_id
 correct = 0
-for item in tqdm(evaluation_items, desc="Evaluating"):
+for idx, item in enumerate(tqdm(evaluation_items, desc="Evaluating")):
     choice_ids = dynamic_tokens_to_latxa_ids(
         item["dynamic_tokens"],
         latxa_tokenizer
@@ -122,7 +122,8 @@ pred_dyn_out.close()
 tokenized_latxa_out = open("cache/EusProficiency_latxa_tokenized.jsonl", "w")
 pred_latxa_out = open("results/EusProficiency_latxa_predictions.jsonl", "w")
 correct = 0
-for item in tqdm(evaluation_items, desc="Evaluating Latxa"):
+
+for idx, item in enumerate(tqdm(evaluation_items, desc="Evaluating Latxa")):
     choice_ids = [
         latxa_tokenizer.convert_tokens_to_ids(tokens)
         for tokens in item["latxa_tokens"]
