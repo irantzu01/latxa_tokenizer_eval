@@ -97,28 +97,30 @@ with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl", "w") as f:
             "gold": item["answer"]
         }) + "\n")
 
-correct = 0
-total = 0
+print("Latxa few-shot tokenization and caching completed.")
 
-with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl") as f:
-    for line in tqdm(f, desc="Evaluating"):
-        item = json.loads(line)
+# correct = 0
+# total = 0
 
-        full_ids = [
-            item["prompt_ids"] + item["choice_ids"][c]
-            for c in ["A", "B", "C", "D"]
-        ]
+# with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl") as f:
+#     for line in tqdm(f, desc="Evaluating"):
+#         item = json.loads(line)
 
-        input_ids, attention_mask = build_batch_tensors(
-            full_ids, pad_id, device
-        )
+#         full_ids = [
+#             item["prompt_ids"] + item["choice_ids"][c]
+#             for c in ["A", "B", "C", "D"]
+#         ]
 
-        scores = score_choices(model, input_ids, attention_mask)
-        pred = torch.argmax(scores).item()
+#         input_ids, attention_mask = build_batch_tensors(
+#             full_ids, pad_id, device
+#         )
 
-        if pred == item["gold"]:
-            correct += 1
-        total += 1
+#         scores = score_choices(model, input_ids, attention_mask)
+#         pred = torch.argmax(scores).item()
 
-accuracy = correct / total
-print(f"Latxa 5-shot (LM Eval style) accuracy: {accuracy:.4f}")
+#         if pred == item["gold"]:
+#             correct += 1
+#         total += 1
+
+# accuracy = correct / total
+# print(f"Latxa 5-shot (LM Eval style) accuracy: {accuracy:.4f}")

@@ -137,36 +137,36 @@ with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl", "w") as f:
             "gold": item["answer"]
         }) + "\n")
 
+print("Dynamic few-shot tokenization and caching completed.")
+# # Evaluation
+# correct = 0
+# total = 0
 
-# Evaluation
-correct = 0
-total = 0
+# with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl") as f:
+#     for line in tqdm(f, desc="Evaluating (dynamic BPE)"):
 
-with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl") as f:
-    for line in tqdm(f, desc="Evaluating (dynamic BPE)"):
+#         item = json.loads(line)
 
-        item = json.loads(line)
+#         full_ids = [
+#             item["prompt_ids"] + item["choice_ids"][c]
+#             for c in CHOICES
+#         ]
 
-        full_ids = [
-            item["prompt_ids"] + item["choice_ids"][c]
-            for c in CHOICES
-        ]
+#         # SAFETY CHECK (optional but recommended)
+#         for seq in full_ids:
+#             assert all(isinstance(x, int) for x in seq)
 
-        # SAFETY CHECK (optional but recommended)
-        for seq in full_ids:
-            assert all(isinstance(x, int) for x in seq)
+#         input_ids, attention_mask = build_batch_tensors(
+#             full_ids, pad_id, device
+#         )
 
-        input_ids, attention_mask = build_batch_tensors(
-            full_ids, pad_id, device
-        )
+#         scores = score_choices(model, input_ids, attention_mask)
+#         pred = torch.argmax(scores).item()
 
-        scores = score_choices(model, input_ids, attention_mask)
-        pred = torch.argmax(scores).item()
+#         if pred == item["gold"]:
+#             correct += 1
+#         total += 1
 
-        if pred == item["gold"]:
-            correct += 1
-        total += 1
-
-accuracy = correct / total
-print(f"Dynamic BPE 5-shot accuracy: {accuracy:.4f}")
+# accuracy = correct / total
+# print(f"Dynamic BPE 5-shot accuracy: {accuracy:.4f}")
 
