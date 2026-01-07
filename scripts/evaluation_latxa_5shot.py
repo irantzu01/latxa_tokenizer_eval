@@ -102,12 +102,16 @@ if pad_id is None:
 correct = 0
 total = 0
 
-with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl") as f:
-    for line in tqdm(f, desc="Evaluating (Latxa few-shot)"):
+results_path = "cache/eusproficiency_latxa_eval_results.jsonl"
+
+with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl") as fin, \
+     open(results_path, "w") as fout:
+
+    for line in tqdm(fin, desc="Evaluating (Latxa few-shot)"):
 
         item = json.loads(line)
 
-        # ----- Reconstruct prompt text -----
+        # ----- Reconstruct prompt -----
         prompt_text = latxa_tokenizer.convert_tokens_to_string(
             item["prompt_tokens"]
         )
@@ -138,10 +142,22 @@ with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl") as f:
 
         scores = score_choices(model, input_ids, attention_mask)
         pred = torch.argmax(scores).item()
+        is_correct = (pred == item["gold"])
 
-        if pred == item["gold"]:
+        # ----- Accumulate -----
+        if is_correct:
             correct += 1
         total += 1
 
+        # ----- Save instance result -----
+        fout.write(json.dumps({
+            "id": item["id"],
+            "gold": item["gold"],
+            "prediction": pred,
+            "correct": is_correct,
+            "scores": scores.tolist()
+        }) + "\n")
+
 accuracy = correct / total
 print(f"Latxa 5-shot (LM Eval style) accuracy: {accuracy:.4f}")
+print(f"Saved per-instance results to {results_path}")
