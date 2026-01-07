@@ -91,91 +91,91 @@ def dynamic_tokens_to_text(dynamic_tokens):
     return text.strip()
 
 # Tokenization and Caching
-with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl", "w") as f:
-    for idx, item in enumerate(tqdm(ds, desc="Dynamic few-shot tokenization")):
+# with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl", "w") as f:
+#     for idx, item in enumerate(tqdm(ds, desc="Dynamic few-shot tokenization")):
 
-        # ----- Build full prompt text -----
-        fewshot_context = build_fewshot_context(ds, idx, k=5)
-        prompt_text = fewshot_context + "\n\n" + build_doc_text(item)
+#         # ----- Build full prompt text -----
+#         fewshot_context = build_fewshot_context(ds, idx, k=5)
+#         prompt_text = fewshot_context + "\n\n" + build_doc_text(item)
 
-        # ----- Dynamic tokenize prompt -----
-        prompt_dyn_tokens = dynamic_tokenize_texts(
-            [prompt_text],
-            dynamic_bpe,
-            batch_size=1
-        )[0]   # list[str]
+#         # ----- Dynamic tokenize prompt -----
+#         prompt_dyn_tokens = dynamic_tokenize_texts(
+#             [prompt_text],
+#             dynamic_bpe,
+#             batch_size=1
+#         )[0]   # list[str]
 
-        # ----- Dynamic tokenize each choice -----
-        choice_dyn_tokens = {}
-        for c in CHOICES:
-            dyn = dynamic_tokenize_texts(
-                [" " + c],
-                dynamic_bpe,
-                batch_size=1
-            )[0]
+#         # ----- Dynamic tokenize each choice -----
+#         choice_dyn_tokens = {}
+#         for c in CHOICES:
+#             dyn = dynamic_tokenize_texts(
+#                 [" " + c],
+#                 dynamic_bpe,
+#                 batch_size=1
+#             )[0]
 
-            choice_dyn_tokens[c] = dyn   # list[str]
+#             choice_dyn_tokens[c] = dyn   # list[str]
 
-        # ----- Save TOKENS, not IDs -----
-        f.write(json.dumps({
-            "id": idx,
-            "prompt_dynamic_tokens": prompt_dyn_tokens,
-            "choice_dynamic_tokens": choice_dyn_tokens,
-            "gold": item["answer"]
-        }) + "\n")
+#         # ----- Save TOKENS, not IDs -----
+#         f.write(json.dumps({
+#             "id": idx,
+#             "prompt_dynamic_tokens": prompt_dyn_tokens,
+#             "choice_dynamic_tokens": choice_dyn_tokens,
+#             "gold": item["answer"]
+#         }) + "\n")
 
-print("Dynamic few-shot tokenization and caching completed.")
+# print("Dynamic few-shot tokenization and caching completed.")
 
 
-# # Evaluation
-# correct = 0
-# total = 0
+# Evaluation
+correct = 0
+total = 0
 
-# with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl") as f:
-#     for line in tqdm(f, desc="Evaluating (dynamic BPE)"):
+with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl") as f:
+    for line in tqdm(f, desc="Evaluating (dynamic BPE)"):
 
-#         item = json.loads(line)
+        item = json.loads(line)
 
-#         # ----- Reconstruct prompt text from dynamic tokens -----
-#         prompt_text = dynamic_tokens_to_text(
-#             item["prompt_dynamic_tokens"]
-#         )
+        # ----- Reconstruct prompt text from dynamic tokens -----
+        prompt_text = dynamic_tokens_to_text(
+            item["prompt_dynamic_tokens"]
+        )
 
-#         # ----- Convert prompt to Latxa IDs -----
-#         prompt_ids = latxa_tokenizer.encode(
-#             prompt_text,
-#             add_special_tokens=False
-#         )
+        # ----- Convert prompt to Latxa IDs -----
+        prompt_ids = latxa_tokenizer.encode(
+            prompt_text,
+            add_special_tokens=False
+        )
 
-#         # ----- Reconstruct choices and build full sequences -----
-#         full_ids = []
-#         for c in ["A", "B", "C", "D"]:
-#             choice_text = dynamic_tokens_to_text(
-#                 item["choice_dynamic_tokens"][c]
-#             )
+        # ----- Reconstruct choices and build full sequences -----
+        full_ids = []
+        for c in ["A", "B", "C", "D"]:
+            choice_text = dynamic_tokens_to_text(
+                item["choice_dynamic_tokens"][c]
+            )
 
-#             choice_ids = latxa_tokenizer.encode(
-#                 choice_text,
-#                 add_special_tokens=False
-#             )
+            choice_ids = latxa_tokenizer.encode(
+                choice_text,
+                add_special_tokens=False
+            )
 
-#             full_ids.append(prompt_ids + choice_ids)
+            full_ids.append(prompt_ids + choice_ids)
 
-#         # ----- Safety check -----
-#         for seq in full_ids:
-#             assert all(isinstance(x, int) for x in seq)
+        # ----- Safety check -----
+        for seq in full_ids:
+            assert all(isinstance(x, int) for x in seq)
 
-#         # ----- Batch + score -----
-#         input_ids, attention_mask = build_batch_tensors(
-#             full_ids, pad_id, device
-#         )
+        # ----- Batch + score -----
+        input_ids, attention_mask = build_batch_tensors(
+            full_ids, pad_id, device
+        )
 
-#         scores = score_choices(model, input_ids, attention_mask)
-#         pred = torch.argmax(scores).item()
+        scores = score_choices(model, input_ids, attention_mask)
+        pred = torch.argmax(scores).item()
 
-#         if pred == item["gold"]:
-#             correct += 1
-#         total += 1
+        if pred == item["gold"]:
+            correct += 1
+        total += 1
 
-# accuracy = correct / total
-# print(f"Dynamic BPE 5-shot accuracy: {accuracy:.4f}")
+accuracy = correct / total
+print(f"Dynamic BPE 5-shot accuracy: {accuracy:.4f}")
