@@ -75,76 +75,73 @@ pad_id = latxa_tokenizer.pad_token_id
 if pad_id is None:
     pad_id = latxa_tokenizer.eos_token_id
 
-with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl", "w") as f:
-    for idx, item in enumerate(tqdm(ds, desc="Tokenizing (Latxa few-shot)")):
+# with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl", "w") as f:
+#     for idx, item in enumerate(tqdm(ds, desc="Tokenizing (Latxa few-shot)")):
+#         # Build full prompt text
+#         fewshot_context = build_fewshot_context(ds, idx, k=5)
+#         prompt_text = fewshot_context + "\n\n" + build_doc_text(item)
 
-        # ----- Build full prompt text -----
-        fewshot_context = build_fewshot_context(ds, idx, k=5)
-        prompt_text = fewshot_context + "\n\n" + build_doc_text(item)
+#         # Latxa tokenize prompt and choices
+#         prompt_tokens = latxa_tokenizer.tokenize(prompt_text)
+#         choice_tokens = {
+#             c: latxa_tokenizer.tokenize(" " + c)
+#             for c in ["A", "B", "C", "D"]
+#         }
 
-        # ----- Latxa tokenize prompt (TOKENS) -----
-        prompt_tokens = latxa_tokenizer.tokenize(prompt_text)
+#         # Save TOKENS
+#         f.write(json.dumps({
+#             "id": idx,
+#             "prompt_tokens": prompt_tokens,
+#             "choice_tokens": choice_tokens,
+#             "gold": item["answer"]
+#         }) + "\n")
 
-        # ----- Latxa tokenize each choice (TOKENS) -----
-        choice_tokens = {
-            c: latxa_tokenizer.tokenize(" " + c)
-            for c in ["A", "B", "C", "D"]
-        }
-
-        # ----- Save TOKENS -----
-        f.write(json.dumps({
-            "id": idx,
-            "prompt_tokens": prompt_tokens,
-            "choice_tokens": choice_tokens,
-            "gold": item["answer"]
-        }) + "\n")
-
-print("Latxa few-shot tokenization (tokens) cached.")
+# print("Latxa few-shot tokenization (tokens) cached.")
 
 
-# correct = 0
-# total = 0
+correct = 0
+total = 0
 
-# with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl") as f:
-#     for line in tqdm(f, desc="Evaluating (Latxa few-shot)"):
+with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl") as f:
+    for line in tqdm(f, desc="Evaluating (Latxa few-shot)"):
 
-#         item = json.loads(line)
+        item = json.loads(line)
 
-#         # ----- Reconstruct prompt text -----
-#         prompt_text = latxa_tokenizer.convert_tokens_to_string(
-#             item["prompt_tokens"]
-#         )
+        # ----- Reconstruct prompt text -----
+        prompt_text = latxa_tokenizer.convert_tokens_to_string(
+            item["prompt_tokens"]
+        )
 
-#         prompt_ids = latxa_tokenizer.encode(
-#             prompt_text,
-#             add_special_tokens=False
-#         )
+        prompt_ids = latxa_tokenizer.encode(
+            prompt_text,
+            add_special_tokens=False
+        )
 
-#         # ----- Build full sequences -----
-#         full_ids = []
-#         for c in ["A", "B", "C", "D"]:
-#             choice_text = latxa_tokenizer.convert_tokens_to_string(
-#                 item["choice_tokens"][c]
-#             )
+        # ----- Build full sequences -----
+        full_ids = []
+        for c in ["A", "B", "C", "D"]:
+            choice_text = latxa_tokenizer.convert_tokens_to_string(
+                item["choice_tokens"][c]
+            )
 
-#             choice_ids = latxa_tokenizer.encode(
-#                 choice_text,
-#                 add_special_tokens=False
-#             )
+            choice_ids = latxa_tokenizer.encode(
+                choice_text,
+                add_special_tokens=False
+            )
 
-#             full_ids.append(prompt_ids + choice_ids)
+            full_ids.append(prompt_ids + choice_ids)
 
-#         # ----- Batch + score -----
-#         input_ids, attention_mask = build_batch_tensors(
-#             full_ids, pad_id, device
-#         )
+        # ----- Batch + score -----
+        input_ids, attention_mask = build_batch_tensors(
+            full_ids, pad_id, device
+        )
 
-#         scores = score_choices(model, input_ids, attention_mask)
-#         pred = torch.argmax(scores).item()
+        scores = score_choices(model, input_ids, attention_mask)
+        pred = torch.argmax(scores).item()
 
-#         if pred == item["gold"]:
-#             correct += 1
-#         total += 1
+        if pred == item["gold"]:
+            correct += 1
+        total += 1
 
-# accuracy = correct / total
-# print(f"Latxa 5-shot (LM Eval style) accuracy: {accuracy:.4f}")
+accuracy = correct / total
+print(f"Latxa 5-shot (LM Eval style) accuracy: {accuracy:.4f}")

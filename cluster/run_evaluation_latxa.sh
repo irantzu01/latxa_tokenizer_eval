@@ -5,7 +5,7 @@
 #SBATCH -n 1
 #SBATCH -c 8
 #SBATCH --gres=gpu:A100:1
-#SBATCH --time=02:00:00
+#SBATCH --time=20:00:00
 #SBATCH --partition=react
 #SBATCH -C inet
 
