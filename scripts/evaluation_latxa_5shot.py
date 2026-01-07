@@ -76,41 +76,65 @@ if pad_id is None:
     pad_id = latxa_tokenizer.eos_token_id
 
 with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl", "w") as f:
-    for idx, item in enumerate(tqdm(ds, desc="Tokenizing (few-shot)")):
+    for idx, item in enumerate(tqdm(ds, desc="Tokenizing (Latxa few-shot)")):
 
+        # ----- Build full prompt text -----
         fewshot_context = build_fewshot_context(ds, idx, k=5)
         prompt_text = fewshot_context + "\n\n" + build_doc_text(item)
 
-        prompt_ids = latxa_tokenizer.encode(
-            prompt_text, add_special_tokens=False
-        )
+        # ----- Latxa tokenize prompt (TOKENS) -----
+        prompt_tokens = latxa_tokenizer.tokenize(prompt_text)
 
-        choice_ids = {
-            c.strip(): latxa_tokenizer.encode(c, add_special_tokens=False)
-            for c in CHOICES
+        # ----- Latxa tokenize each choice (TOKENS) -----
+        choice_tokens = {
+            c: latxa_tokenizer.tokenize(" " + c)
+            for c in ["A", "B", "C", "D"]
         }
 
+        # ----- Save TOKENS -----
         f.write(json.dumps({
             "id": idx,
-            "prompt_ids": prompt_ids,
-            "choice_ids": choice_ids,
+            "prompt_tokens": prompt_tokens,
+            "choice_tokens": choice_tokens,
             "gold": item["answer"]
         }) + "\n")
 
-print("Latxa few-shot tokenization and caching completed.")
+print("Latxa few-shot tokenization (tokens) cached.")
+
 
 # correct = 0
 # total = 0
 
 # with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl") as f:
-#     for line in tqdm(f, desc="Evaluating"):
+#     for line in tqdm(f, desc="Evaluating (Latxa few-shot)"):
+
 #         item = json.loads(line)
 
-#         full_ids = [
-#             item["prompt_ids"] + item["choice_ids"][c]
-#             for c in ["A", "B", "C", "D"]
-#         ]
+#         # ----- Reconstruct prompt text -----
+#         prompt_text = latxa_tokenizer.convert_tokens_to_string(
+#             item["prompt_tokens"]
+#         )
 
+#         prompt_ids = latxa_tokenizer.encode(
+#             prompt_text,
+#             add_special_tokens=False
+#         )
+
+#         # ----- Build full sequences -----
+#         full_ids = []
+#         for c in ["A", "B", "C", "D"]:
+#             choice_text = latxa_tokenizer.convert_tokens_to_string(
+#                 item["choice_tokens"][c]
+#             )
+
+#             choice_ids = latxa_tokenizer.encode(
+#                 choice_text,
+#                 add_special_tokens=False
+#             )
+
+#             full_ids.append(prompt_ids + choice_ids)
+
+#         # ----- Batch + score -----
 #         input_ids, attention_mask = build_batch_tensors(
 #             full_ids, pad_id, device
 #         )
