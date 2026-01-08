@@ -8,7 +8,7 @@ Lexical realignment for Latxa 7B using a new Basque tokenizer.
 """
 
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM, AdamW, get_scheduler
 from datasets import load_dataset, concatenate_datasets
 from tqdm import tqdm
@@ -43,21 +43,41 @@ model.get_output_embeddings().weight.requires_grad = True
 
 print("Middle layers frozen. Only input embeddings and LM head will be trained.")
 
-# ================== 4️⃣ Load and prepare datasets ==================
-# HPLT 10% + Wikipedia + Egunkaria
-ds1 = load_dataset("HiTZ/latxa-corpus-v1.1", "hplt-v1", split="train").train_test_split(test_size=0.1, seed=42)['test']
-ds2 = load_dataset("HiTZ/latxa-corpus-v1.1", "wikipedia", split="train")
-ds3 = load_dataset("HiTZ/latxa-corpus-v1.1", "egunkaria", split="train"]
 
-combined_ds = concatenate_datasets([ds1, ds2, ds3])
+# ================== 4️⃣ Load and prepare local corpus ==================
+class BasqueCorpusDataset(Dataset):
+    def __init__(self, file_path, tokenizer, max_length=2048):
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+        self.examples = []
 
-def tokenize_function(example):
-    return tokenizer(example["text"], truncation=True, max_length=max_length)
+        # Read the file line by line
+        with open(file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    self.examples.append(line)
 
-tokenized_ds = combined_ds.map(tokenize_function, batched=True, remove_columns=["text"])
+    def __len__(self):
+        return len(self.examples)
 
-# Convert to PyTorch DataLoader
-train_loader = DataLoader(tokenized_ds, batch_size=batch_size, shuffle=True)
+    def __getitem__(self, idx):
+        # Tokenize each line on the fly
+        enc = self.tokenizer(
+            self.examples[idx],
+            truncation=True,
+            max_length=self.max_length,
+            return_tensors="pt",
+        )
+        return {
+            "input_ids": enc["input_ids"].squeeze(0),
+            "attention_mask": enc["attention_mask"].squeeze(0)
+        }
+
+# Create the dataset and DataLoader
+train_dataset = BasqueCorpusDataset("data/basque_corpus.txt", tokenizer, max_length=2048)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+
 
 # ================== 5️⃣ Optimizer and scheduler ==================
 optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate)
