@@ -2,7 +2,8 @@ Evaluation results
 
 EusProficiency;
 Latxa accuracy: 0.3244341265235055
-Final accuracy (Dynamic BPE segmentation + Latxa vocab): 0.2411
+Final accuracy (Dynamic BPE segmentation + Latxa vocab): 0.2383
+Latxa accuracy I got: 0.3165
 
 EusReading;
 Latxa accuracy: 0.3039772727272727

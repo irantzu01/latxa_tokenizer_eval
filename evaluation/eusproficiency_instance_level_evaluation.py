@@ -2,20 +2,22 @@
 import json
 import sys
 
-id_list = set()
+diff_ids = set()
 with open("cache/eusproficiency_dynamic_eval_results.jsonl") as fbpe, \
      open("cache/eusproficiency_latxa_eval_results.jsonl") as flatxa:
-     for line in fbpe, flatxa:
-        bpe_result = json.loads(fbpe.readline())
-        latxa_result = json.loads(flatxa.readline())
-        if bpe_result["correct"] != latxa_result["correct"]:
-            id_diff = bpe_result["id"]
-            id_list.add(id_diff)
+     for bpe_line, latxa_line in zip(fbpe, flatxa):
+        bpe = json.loads(bpe_line)
+        latxa = json.loads(latxa_line)
+        if bpe["correct"] != latxa["correct"]:
+            id_diff = bpe["id"]
+            diff_ids.add(id_diff)
+print(f"Found {len(diff_ids)} differing instances")
+
 
 with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl") as fbpe_tok, \
      open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl") as flatxa_tok, \
      open("eusproficiency_different_results.jsonl", "w") as fout:
-     for line in fbpe_tok, flatxa_tok:
+     for bpe_line, latxa_line in zip(fbpe, flatxa):
         bpe_entry = json.loads(fbpe_tok.readline())
         latxa_entry = json.loads(flatxa_tok.readline())
         if bpe_entry["id"] in id_list:
