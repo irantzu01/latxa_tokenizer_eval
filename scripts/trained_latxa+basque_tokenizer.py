@@ -19,7 +19,7 @@ import os
 model_name = "HiTZ/latxa-7b-v1.2"
 tokenizer_dir = "basque_tokenizer_hf"
 device = "cuda" if torch.cuda.is_available() else "cpu"
-batch_size = 2                # Adjust for GPU memory
+batch_size = 32                # Adjust for GPU memory
 learning_rate = 5e-5
 epochs = 1                    # You can increase depending on dataset size
 max_length = 2048
