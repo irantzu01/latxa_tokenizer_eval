@@ -9,6 +9,7 @@ Lexical realignment for Latxa 7B using a new Basque tokenizer.
 
 import torch
 from torch.utils.data import DataLoader, Dataset
+from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer, AutoModelForCausalLM, AdamW, get_scheduler
 from datasets import load_dataset, concatenate_datasets
 from tqdm import tqdm
@@ -73,10 +74,25 @@ class BasqueCorpusDataset(Dataset):
             "input_ids": enc["input_ids"].squeeze(0),
             "attention_mask": enc["attention_mask"].squeeze(0)
         }
+    
+
+def collate_fn(batch):
+    # batch is a list of dicts: {"input_ids": ..., "attention_mask": ...}
+    input_ids = [item['input_ids'] for item in batch]
+    attention_mask = [item['attention_mask'] for item in batch]
+
+    # Pad to the max length in the batch
+    input_ids = pad_sequence(input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
+    attention_mask = pad_sequence(attention_mask, batch_first=True, padding_value=0)
+
+    return {
+        "input_ids": input_ids,
+        "attention_mask": attention_mask
+    }
 
 # Create the dataset and DataLoader
 train_dataset = BasqueCorpusDataset("data/basque_corpus.txt", tokenizer, max_length=2048)
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
 
 
 # ================== 5️⃣ Optimizer and scheduler ==================
