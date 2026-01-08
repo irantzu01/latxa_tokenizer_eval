@@ -97,23 +97,16 @@ with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl", "w") as f, \
         fewshot_context = build_fewshot_context(ds, idx, k=5)
         query_text = build_doc_text(item)
         prompt_text = fewshot_context + "\n\n" + query_text
-        prompt_dyn_tokens = dynamic_tokenize_texts(
-            [prompt_text],
-            dynamic_bpe,
-            batch_size=1
-        )[0]
-        query_dyn_tokens = dynamic_tokenize_texts(
-            [query_text],
-            dynamic_bpe,
-            batch_size=1
-        )[0]
+        prompt_dyn_tokens = dynamic_tokenize_texts([prompt_text], dynamic_bpe, batch_size=1)[0]
+        query_dyn_tokens = dynamic_tokenize_texts([query_text], dynamic_bpe, batch_size=1)[0]
+        query_reconstructed_text = dynamic_tokens_to_text(query_dyn_tokens)
+        query_latxa_ids = latxa_tokenizer.encode(
+            query_reconstructed_text,
+            add_special_tokens=False
+        )
         choice_dyn_tokens = {}
         for c in CHOICES:
-            dyn = dynamic_tokenize_texts(
-                [" " + c],
-                dynamic_bpe,
-                batch_size=1
-            )[0]
+            dyn = dynamic_tokenize_texts([" " + c], dynamic_bpe, batch_size=1)[0]
             choice_dyn_tokens[c] = dyn
         f.write(json.dumps({
             "id": idx,
@@ -124,10 +117,12 @@ with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl", "w") as f, \
         f2.write(json.dumps({
             "id": idx,
             "query_dynamic_tokens": query_dyn_tokens,
+            "query_latxa_ids": query_latxa_ids,
             "gold": item["answer"]
         }) + "\n")
 
 print("Dynamic few-shot tokenization and caching completed.")
+
 
 
 # correct = 0
