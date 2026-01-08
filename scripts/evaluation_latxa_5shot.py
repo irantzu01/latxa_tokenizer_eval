@@ -82,7 +82,8 @@ with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl", "w") as f, \
         query_text = build_doc_text(item)
         prompt_text = fewshot_context + "\n\n" + query_text
         prompt_tokens = latxa_tokenizer.tokenize(prompt_text)
-        query_tokens = latxa_tokenizer.tokenize(query_text)       
+        query_tokens = latxa_tokenizer.tokenize(query_text) 
+        query_ids = latxa_tokenizer.convert_tokens_to_ids(query_tokens)
         choice_tokens = {
             c: latxa_tokenizer.tokenize(" " + c)
             for c in ["A", "B", "C", "D"]
@@ -96,6 +97,7 @@ with open("cache/eusproficiency_latxa_fewshot_tokenized.jsonl", "w") as f, \
         f2.write(json.dumps({
             "id": idx,
             "query_tokens": query_tokens,
+            "query_ids": query_ids,
             "gold": item["answer"]
         }) + "\n")
 
