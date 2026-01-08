@@ -90,6 +90,11 @@ def collate_fn(batch):
         "attention_mask": attention_mask
     }
 
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token  # or "<s>" if you prefer
+    print(f"Pad token set to: {tokenizer.pad_token} ({tokenizer.pad_token_id})")
+
+
 # Create the dataset and DataLoader
 train_dataset = BasqueCorpusDataset("data/basque_corpus.txt", tokenizer, max_length=2048)
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
