@@ -90,102 +90,105 @@ def dynamic_tokens_to_text(dynamic_tokens):
             text += tok
     return text.strip()
 
-# Tokenization and Caching
-# with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl", "w") as f:
-#     for idx, item in enumerate(tqdm(ds, desc="Dynamic few-shot tokenization")):
-
-#         # ----- Build full prompt text -----
-#         fewshot_context = build_fewshot_context(ds, idx, k=5)
-#         prompt_text = fewshot_context + "\n\n" + build_doc_text(item)
-
-#         # ----- Dynamic tokenize prompt -----
-#         prompt_dyn_tokens = dynamic_tokenize_texts(
-#             [prompt_text],
-#             dynamic_bpe,
-#             batch_size=1
-#         )[0]   # list[str]
-
-#         # ----- Dynamic tokenize each choice -----
-#         choice_dyn_tokens = {}
-#         for c in CHOICES:
-#             dyn = dynamic_tokenize_texts(
-#                 [" " + c],
-#                 dynamic_bpe,
-#                 batch_size=1
-#             )[0]
-
-#             choice_dyn_tokens[c] = dyn   # list[str]
-
-#         # ----- Save TOKENS, not IDs -----
-#         f.write(json.dumps({
-#             "id": idx,
-#             "prompt_dynamic_tokens": prompt_dyn_tokens,
-#             "choice_dynamic_tokens": choice_dyn_tokens,
-#             "gold": item["answer"]
-#         }) + "\n")
-
-# print("Dynamic few-shot tokenization and caching completed.")
-
-
-correct = 0
-total = 0
-
-results_path = "cache/eusproficiency_dynamic_eval_results.jsonl"
-
-with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl") as fin, \
-     open(results_path, "w") as fout:
-
-    for line in tqdm(fin, desc="Evaluating (dynamic BPE)"):
-
-        item = json.loads(line)
-
-        # ----- Reconstruct prompt -----
-        prompt_text = dynamic_tokens_to_text(
-            item["prompt_dynamic_tokens"]
-        )
-
-        prompt_ids = latxa_tokenizer.encode(
-            prompt_text,
-            add_special_tokens=False
-        )
-
-        # ----- Build full sequences -----
-        full_ids = []
-        for c in ["A", "B", "C", "D"]:
-            choice_text = dynamic_tokens_to_text(
-                item["choice_dynamic_tokens"][c]
-            )
-
-            choice_ids = latxa_tokenizer.encode(
-                choice_text,
-                add_special_tokens=False
-            )
-
-            full_ids.append(prompt_ids + choice_ids)
-
-        # ----- Batch + score -----
-        input_ids, attention_mask = build_batch_tensors(
-            full_ids, pad_id, device
-        )
-
-        scores = score_choices(model, input_ids, attention_mask)
-        pred = torch.argmax(scores).item()
-        is_correct = (pred == item["gold"])
-
-        # ----- Accumulate -----
-        if is_correct:
-            correct += 1
-        total += 1
-
-        # ----- Save instance result -----
-        fout.write(json.dumps({
-            "id": item["id"],
-            "gold": item["gold"],
-            "prediction": pred,
-            "correct": is_correct,
-            "scores": scores.tolist()
+#Tokenization and Caching
+with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl", "w") as f, \
+     open("cache/eusproficiency_dynamic_fewshot_queries.jsonl", "w") as f2:
+    for idx, item in enumerate(tqdm(ds, desc="Dynamic few-shot tokenization")):
+        fewshot_context = build_fewshot_context(ds, idx, k=5)
+        query_text = build_doc_text(item)
+        prompt_text = fewshot_context + "\n\n" + query_text
+        prompt_dyn_tokens = dynamic_tokenize_texts(
+            [prompt_text],
+            dynamic_bpe,
+            batch_size=1
+        )[0]
+        query_dyn_tokens = dynamic_tokenize_texts(
+            [query_text],
+            dynamic_bpe,
+            batch_size=1
+        )[0]
+        choice_dyn_tokens = {}
+        for c in CHOICES:
+            dyn = dynamic_tokenize_texts(
+                [" " + c],
+                dynamic_bpe,
+                batch_size=1
+            )[0]
+            choice_dyn_tokens[c] = dyn
+        f.write(json.dumps({
+            "id": idx,
+            "prompt_dynamic_tokens": prompt_dyn_tokens,
+            "choice_dynamic_tokens": choice_dyn_tokens,
+            "gold": item["answer"]
+        }) + "\n")
+        f2.write(json.dumps({
+            "id": idx,
+            "query_dynamic_tokens": query_dyn_tokens,
+            "gold": item["answer"]
         }) + "\n")
 
-accuracy = correct / total
-print(f"Dynamic BPE 5-shot accuracy: {accuracy:.4f}")
-print(f"Saved per-instance results to {results_path}")
+print("Dynamic few-shot tokenization and caching completed.")
+
+
+# correct = 0
+# total = 0
+
+# results_path = "cache/eusproficiency_dynamic_eval_results.jsonl"
+
+# with open("cache/eusproficiency_dynamic_fewshot_tokenized.jsonl") as fin, \
+#      open(results_path, "w") as fout:
+
+#     for line in tqdm(fin, desc="Evaluating (dynamic BPE)"):
+
+#         item = json.loads(line)
+
+#         # ----- Reconstruct prompt -----
+#         prompt_text = dynamic_tokens_to_text(
+#             item["prompt_dynamic_tokens"]
+#         )
+
+#         prompt_ids = latxa_tokenizer.encode(
+#             prompt_text,
+#             add_special_tokens=False
+#         )
+
+#         # ----- Build full sequences -----
+#         full_ids = []
+#         for c in ["A", "B", "C", "D"]:
+#             choice_text = dynamic_tokens_to_text(
+#                 item["choice_dynamic_tokens"][c]
+#             )
+
+#             choice_ids = latxa_tokenizer.encode(
+#                 choice_text,
+#                 add_special_tokens=False
+#             )
+
+#             full_ids.append(prompt_ids + choice_ids)
+
+#         # ----- Batch + score -----
+#         input_ids, attention_mask = build_batch_tensors(
+#             full_ids, pad_id, device
+#         )
+
+#         scores = score_choices(model, input_ids, attention_mask)
+#         pred = torch.argmax(scores).item()
+#         is_correct = (pred == item["gold"])
+
+#         # ----- Accumulate -----
+#         if is_correct:
+#             correct += 1
+#         total += 1
+
+#         # ----- Save instance result -----
+#         fout.write(json.dumps({
+#             "id": item["id"],
+#             "gold": item["gold"],
+#             "prediction": pred,
+#             "correct": is_correct,
+#             "scores": scores.tolist()
+#         }) + "\n")
+
+# accuracy = correct / total
+# print(f"Dynamic BPE 5-shot accuracy: {accuracy:.4f}")
+# print(f"Saved per-instance results to {results_path}")
