@@ -4,7 +4,7 @@ import sys
 
 id_list = set()
 with open("cache/eusproficiency_dynamic_eval_results.jsonl") as fbpe, \
-     open("cache/eusproficiency_latxa_eval_results.jsonl") as flatxa, \
+     open("cache/eusproficiency_latxa_eval_results.jsonl") as flatxa:
      for line in fbpe, flatxa:
         bpe_result = json.loads(fbpe.readline())
         latxa_result = json.loads(flatxa.readline())
