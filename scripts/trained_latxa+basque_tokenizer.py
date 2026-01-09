@@ -8,18 +8,21 @@ Lexical realignment for Latxa 7B using a new Basque tokenizer.
 """
 
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, random_split
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer, AutoModelForCausalLM, AdamW, get_scheduler
 from datasets import load_dataset, concatenate_datasets
 from tqdm import tqdm
+import math
 import os
+
 
 # ================== 1️⃣ Settings ==================
 model_name = "HiTZ/latxa-7b-v1.2"
 tokenizer_dir = "basque_tokenizer_hf"
 device = "cuda" if torch.cuda.is_available() else "cpu"
 batch_size = 4                # Adjust for GPU memory
+gradient_accumulation_steps = 8
 learning_rate = 1e-4
 epochs = 10                    # You can increase depending on dataset size
 max_length = 2048
