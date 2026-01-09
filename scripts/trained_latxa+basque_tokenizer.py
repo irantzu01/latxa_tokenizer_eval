@@ -19,8 +19,8 @@ import os
 model_name = "HiTZ/latxa-7b-v1.2"
 tokenizer_dir = "basque_tokenizer_hf"
 device = "cuda" if torch.cuda.is_available() else "cpu"
-batch_size = 32                # Adjust for GPU memory
-learning_rate = 5e-5
+batch_size = 4                # Adjust for GPU memory
+learning_rate = 1e-4
 epochs = 10                    # You can increase depending on dataset size
 max_length = 2048
 save_dir = "latxa7b_basque_aligned"
@@ -29,6 +29,11 @@ os.makedirs(save_dir, exist_ok=True)
 
 # ================== 2️⃣ Load tokenizer and model ==================
 tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, use_fast=True)
+
+# Set pad token if missing
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+    print(f"Pad token set to: {tokenizer.pad_token} ({tokenizer.pad_token_id})")
 
 model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto", low_cpu_mem_usage=True)
 model.resize_token_embeddings(len(tokenizer))
@@ -73,62 +78,78 @@ class BasqueCorpusDataset(Dataset):
         return {
             "input_ids": enc["input_ids"].squeeze(0),
             "attention_mask": enc["attention_mask"].squeeze(0)
-        }
-    
+        }    
 
 def collate_fn(batch):
-    # batch is a list of dicts: {"input_ids": ..., "attention_mask": ...}
-    input_ids = [item['input_ids'] for item in batch]
-    attention_mask = [item['attention_mask'] for item in batch]
+    return tokenizer.pad(batch, padding=True, return_tensors="pt")
 
-    # Pad to the max length in the batch
-    input_ids = pad_sequence(input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
-    attention_mask = pad_sequence(attention_mask, batch_first=True, padding_value=0)
+# Load dataset
+full_dataset = BasqueCorpusDataset("data/basque_corpus.txt", tokenizer, max_length=max_length)
 
-    return {
-        "input_ids": input_ids,
-        "attention_mask": attention_mask
-    }
+# Split train/val for perplexity monitoring
+val_fraction = 0.01
+n_val = int(len(full_dataset) * val_fraction)
+n_train = len(full_dataset) - n_val
+train_dataset, val_dataset = random_split(full_dataset, [n_train, n_val])
 
-if tokenizer.pad_token is None:
-    tokenizer.pad_token = tokenizer.eos_token  # or "<s>" if you prefer
-    print(f"Pad token set to: {tokenizer.pad_token} ({tokenizer.pad_token_id})")
-
-
-# Create the dataset and DataLoader
-train_dataset = BasqueCorpusDataset("data/basque_corpus.txt", tokenizer, max_length=2048)
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
-
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
 
 # ================== 5️⃣ Optimizer and scheduler ==================
 optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate)
-num_training_steps = epochs * len(train_loader)
-scheduler = get_scheduler("linear", optimizer=optimizer, num_warmup_steps=0, num_training_steps=num_training_steps)
+num_training_steps = epochs * len(train_loader) // gradient_accumulation_steps
+num_warmup_steps = int(0.05 * num_training_steps)
 
-# ================== 6️⃣ Training loop ==================
+scheduler = get_scheduler(
+    "linear",
+    optimizer=optimizer,
+    num_warmup_steps=num_warmup_steps,
+    num_training_steps=num_training_steps
+)
+
+# ================== 6️⃣ Perplexity function ==================
+@torch.no_grad()
+def evaluate_ppl(model, dataloader):
+    model.eval()
+    losses = []
+    for batch in dataloader:
+        batch = {k: v.to(device) for k, v in batch.items()}
+        outputs = model(**batch, labels=batch["input_ids"])
+        losses.append(outputs.loss.item())
+    model.train()
+    return math.exp(sum(losses) / len(losses))
+
+
+# ================== 7️⃣ Training loop ==================
 model.train()
 for epoch in range(epochs):
     loop = tqdm(train_loader, desc=f"Epoch {epoch+1}")
-    for batch in loop:
-        input_ids = batch['input_ids'].to(device)
-        attention_mask = batch['attention_mask'].to(device)
+    optimizer.zero_grad()
+    for step, batch in enumerate(loop):
+        batch = {k: v.to(device) for k, v in batch.items()}
 
-        outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=input_ids)
-        loss = outputs.loss
-
-        optimizer.zero_grad()
+        outputs = model(**batch, labels=batch["input_ids"])
+        loss = outputs.loss / gradient_accumulation_steps
         loss.backward()
-        optimizer.step()
-        scheduler.step()
 
-        loop.set_postfix(loss=loss.item())
+        if (step + 1) % gradient_accumulation_steps == 0:
+            optimizer.step()
+            scheduler.step()
+            optimizer.zero_grad()
 
-# ================== 7️⃣ Save aligned model ==================
+        loop.set_postfix(loss=loss.item() * gradient_accumulation_steps)
+
+    # Evaluate validation perplexity
+    ppl = evaluate_ppl(model, val_loader)
+    print(f"Epoch {epoch+1} completed. Validation perplexity: {ppl:.2f}")
+
+
+# ================== 8️⃣ Save aligned model ==================
 model.save_pretrained(save_dir)
 tokenizer.save_pretrained(save_dir)
 print(f"Lexically realigned Latxa 7B saved to '{save_dir}'")
 
-# ================== 8️⃣ Test generation ==================
+# ================== 9️⃣ Test generation ==================
 model.eval()
 test_sentence = "Euskal Herria da gure herria."
 inputs = tokenizer(test_sentence, return_tensors="pt").to(device)
