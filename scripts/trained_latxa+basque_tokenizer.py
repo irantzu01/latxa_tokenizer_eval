@@ -24,12 +24,12 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 batch_size = 4                     # Adjust for GPU memory
 gradient_accumulation_steps = 8    # Effective batch size = batch_size * grad_accum
 learning_rate = 1e-4
-epochs = 3                         # Adjust as needed
-max_length = 1024                   # Can increase later
+epochs = 3                         # Can increase later
+max_length = 1024                  # Max tokens per sentence
 save_dir = "latxa7b_basque_aligned"
 
-approx_num_examples = 200_000_000   # Estimate of corpus size for scheduler
-val_fraction = 0.01                 # 1% for validation
+approx_num_examples = 200_000_000  # Total sentences (for scheduler)
+val_fraction = 0.01                 # Fraction for validation
 
 os.makedirs(save_dir, exist_ok=True)
 
@@ -39,7 +39,9 @@ if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
     print(f"Pad token set to: {tokenizer.pad_token} ({tokenizer.pad_token_id})")
 
-model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto", low_cpu_mem_usage=True)
+model = AutoModelForCausalLM.from_pretrained(
+    model_name, device_map="auto", low_cpu_mem_usage=True
+)
 model.resize_token_embeddings(len(tokenizer))
 model = model.to(device)
 
@@ -47,34 +49,43 @@ model = model.to(device)
 for name, param in model.named_parameters():
     param.requires_grad = False
 
+# Unfreeze embeddings and LM head
 model.get_input_embeddings().weight.requires_grad = True
 model.get_output_embeddings().weight.requires_grad = True
 print("Middle layers frozen. Only input embeddings and LM head will be trained.")
 
 # ================== 4️⃣ Load streaming dataset ==================
 dataset = load_dataset("text", data_files="data/basque_corpus.txt", split="train", streaming=True)
-dataset = dataset.shuffle(buffer_size=10_000)  # small shuffle buffer for randomness
+dataset = dataset.shuffle(buffer_size=10_000)
 
-# Split 1% for validation
+# Split validation
 val_dataset = dataset.take(int(val_fraction * approx_num_examples))
 train_dataset = dataset.skip(int(val_fraction * approx_num_examples))
 
 # Tokenization function
 def tokenize_fn(batch):
     enc = tokenizer(batch["text"], truncation=True, max_length=max_length)
-    return enc
+    return {"input_ids": enc["input_ids"], "attention_mask": enc["attention_mask"]}
 
 train_dataset = train_dataset.map(tokenize_fn)
 val_dataset = val_dataset.map(tokenize_fn)
 
-# Collate function for DataLoader
+# ================== 5️⃣ Collate function ==================
 def collate_fn(batch):
-    return tokenizer.pad(batch, padding=True, return_tensors="pt")
+    # Convert lists of ints to tensors
+    input_ids = [torch.tensor(x["input_ids"], dtype=torch.long) for x in batch]
+    attention_mask = [torch.tensor(x["attention_mask"], dtype=torch.long) for x in batch]
+
+    # Pad to max length in batch
+    input_ids = torch.nn.utils.rnn.pad_sequence(input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
+    attention_mask = torch.nn.utils.rnn.pad_sequence(attention_mask, batch_first=True, padding_value=0)
+
+    return {"input_ids": input_ids, "attention_mask": attention_mask}
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, collate_fn=collate_fn)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, collate_fn=collate_fn)
 
-# ================== 5️⃣ Optimizer & Scheduler ==================
+# ================== 6️⃣ Optimizer & Scheduler ==================
 optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate)
 
 effective_batch_size = batch_size * gradient_accumulation_steps
@@ -88,10 +99,9 @@ scheduler = get_scheduler(
     num_training_steps=num_training_steps
 )
 
-# ================== 6️⃣ Validation perplexity ==================
+# ================== 7️⃣ Validation perplexity ==================
 @torch.no_grad()
 def evaluate_ppl(model, dataloader, max_batches=50):
-    """Evaluate PPL on up to max_batches batches from validation set."""
     model.eval()
     losses = []
     for i, batch in enumerate(dataloader):
@@ -105,7 +115,7 @@ def evaluate_ppl(model, dataloader, max_batches=50):
         return float("nan")
     return math.exp(sum(losses) / len(losses))
 
-# ================== 7️⃣ Training loop ==================
+# ================== 8️⃣ Training loop ==================
 model.train()
 global_step = 0
 
@@ -114,6 +124,7 @@ for epoch in range(epochs):
     optimizer.zero_grad()
     for step, batch in enumerate(loop):
         batch = {k: v.to(device) for k, v in batch.items()}
+
         outputs = model(**batch, labels=batch["input_ids"])
         loss = outputs.loss / gradient_accumulation_steps
         loss.backward()
@@ -129,16 +140,15 @@ for epoch in range(epochs):
     ppl = evaluate_ppl(model, val_loader)
     print(f"Epoch {epoch+1} completed. Validation perplexity: {ppl:.2f}")
 
-# ================== 8️⃣ Save aligned model ==================
+# ================== 9️⃣ Save model ==================
 model.save_pretrained(save_dir)
 tokenizer.save_pretrained(save_dir)
 print(f"Lexically realigned Latxa 7B saved to '{save_dir}'")
 
-# ================== 9️⃣ Test generation ==================
+# ================== 🔟 Test generation ==================
 model.eval()
 test_sentence = "Euskal Herria da gure herria."
 inputs = tokenizer(test_sentence, return_tensors="pt").to(device)
 outputs = model.generate(**inputs, max_new_tokens=20)
 decoded = tokenizer.decode(outputs[0], skip_special_tokens=True)
 print("Generated:", decoded)
-
