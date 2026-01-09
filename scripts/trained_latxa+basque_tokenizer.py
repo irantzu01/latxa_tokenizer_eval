@@ -91,7 +91,7 @@ full_dataset = BasqueCorpusDataset("data/basque_corpus.txt", tokenizer, max_leng
 
 # Split train/val for perplexity monitoring
 val_fraction = 0.01
-n_val = int(len(full_dataset) * val_fraction)
+n_val = max(1, int(len(full_dataset) * val_fraction))  # at least 1
 n_train = len(full_dataset) - n_val
 train_dataset, val_dataset = random_split(full_dataset, [n_train, n_val])
 
