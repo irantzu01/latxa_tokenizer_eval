@@ -8,13 +8,18 @@ Lexical realignment for Latxa 7B using a new Basque tokenizer.
 """
 
 # ================== 0️⃣ Imports ==================
+import os
 import torch
-from torch.utils.data import DataLoader
-from transformers import AutoTokenizer, AutoModelForCausalLM, AdamW, get_scheduler
-from datasets import load_dataset
+from torch.utils.data import DataLoader, Dataset
+from torch.nn.utils.rnn import pad_sequence
+from transformers import (
+    AutoTokenizer,
+    AutoModelForCausalLM,
+    AdamW,
+    get_scheduler
+)
 from tqdm import tqdm
 import math
-import os
 
 # ================== 1️⃣ Settings ==================
 model_name = "HiTZ/latxa-7b-v1.2"
@@ -24,72 +29,99 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 batch_size = 4                     # Adjust for GPU memory
 gradient_accumulation_steps = 8    # Effective batch size = batch_size * grad_accum
 learning_rate = 1e-4
-epochs = 3                         # Can increase later
-max_length = 1024                  # Max tokens per sentence
+epochs = 3                         # Increase later if needed
+max_length = 1024
 save_dir = "latxa7b_basque_aligned"
 
-approx_num_examples = 200_000_000  # Total sentences (for scheduler)
-val_fraction = 0.01                 # Fraction for validation
+val_fraction = 0.01                 # fraction of corpus for validation
+approx_num_examples = 200_000_000   # estimate of sentences in corpus
+
+corpus_file = "data/basque_corpus.txt"
 
 os.makedirs(save_dir, exist_ok=True)
 
-# ================== 2️⃣ Load tokenizer and model ==================
+# ================== 2️⃣ Load tokenizer ==================
 tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, use_fast=True)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
     print(f"Pad token set to: {tokenizer.pad_token} ({tokenizer.pad_token_id})")
 
+# ================== 3️⃣ Load Latxa model ==================
 model = AutoModelForCausalLM.from_pretrained(
     model_name, device_map="auto", low_cpu_mem_usage=True
 )
+
+# Resize embeddings to match new tokenizer
 model.resize_token_embeddings(len(tokenizer))
 model = model.to(device)
 
-# ================== 3️⃣ Freeze middle layers ==================
+# ================== 4️⃣ Freeze middle layers ==================
 for name, param in model.named_parameters():
     param.requires_grad = False
 
-# Unfreeze embeddings and LM head
+# Only train input embeddings + LM head
 model.get_input_embeddings().weight.requires_grad = True
 model.get_output_embeddings().weight.requires_grad = True
 print("Middle layers frozen. Only input embeddings and LM head will be trained.")
 
-# ================== 4️⃣ Load streaming dataset ==================
-dataset = load_dataset("text", data_files="data/basque_corpus.txt", split="train", streaming=True)
-dataset = dataset.shuffle(buffer_size=10_000)
+# ================== 5️⃣ Dataset ==================
+class BasqueCorpusDataset(Dataset):
+    def __init__(self, file_path, tokenizer, max_length=1024, val_fraction=0.01):
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+        self.examples = []
 
-# Split validation
-val_dataset = dataset.take(int(val_fraction * approx_num_examples))
-train_dataset = dataset.skip(int(val_fraction * approx_num_examples))
+        # Load lines from file
+        with open(file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    self.examples.append(line)
 
-# Tokenization function
-def tokenize_fn(batch):
-    enc = tokenizer(batch["text"], truncation=True, max_length=max_length)
-    return {"input_ids": enc["input_ids"], "attention_mask": enc["attention_mask"]}
+        # Split into train/validation
+        split_idx = int(len(self.examples) * (1 - val_fraction))
+        self.train_examples = self.examples[:split_idx]
+        self.val_examples = self.examples[split_idx:]
 
-train_dataset = train_dataset.map(tokenize_fn)
-val_dataset = val_dataset.map(tokenize_fn)
+    def get_train_dataset(self):
+        return self._tokenized_dataset(self.train_examples)
 
-# ================== 5️⃣ Collate function ==================
+    def get_val_dataset(self):
+        return self._tokenized_dataset(self.val_examples)
+
+    def _tokenized_dataset(self, lines):
+        dataset = []
+        for line in lines:
+            enc = self.tokenizer(
+                line,
+                truncation=True,
+                max_length=self.max_length,
+            )
+            dataset.append({
+                "input_ids": torch.tensor(enc["input_ids"], dtype=torch.long),
+                "attention_mask": torch.tensor(enc["attention_mask"], dtype=torch.long)
+            })
+        return dataset
+
 def collate_fn(batch):
-    # Convert lists of ints to tensors
-    input_ids = [torch.tensor(x["input_ids"], dtype=torch.long) for x in batch]
-    attention_mask = [torch.tensor(x["attention_mask"], dtype=torch.long) for x in batch]
+    input_ids = [x["input_ids"] for x in batch]
+    attention_mask = [x["attention_mask"] for x in batch]
 
-    # Pad to max length in batch
-    input_ids = torch.nn.utils.rnn.pad_sequence(input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
-    attention_mask = torch.nn.utils.rnn.pad_sequence(attention_mask, batch_first=True, padding_value=0)
+    input_ids = pad_sequence(input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
+    attention_mask = pad_sequence(attention_mask, batch_first=True, padding_value=0)
 
     return {"input_ids": input_ids, "attention_mask": attention_mask}
 
-train_loader = DataLoader(train_dataset, batch_size=batch_size, collate_fn=collate_fn)
-val_loader = DataLoader(val_dataset, batch_size=batch_size, collate_fn=collate_fn)
+# Create datasets and loaders
+corpus_dataset = BasqueCorpusDataset(corpus_file, tokenizer, max_length=max_length, val_fraction=val_fraction)
+train_loader = DataLoader(corpus_dataset.get_train_dataset(), batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+val_loader = DataLoader(corpus_dataset.get_val_dataset(), batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
 
-# ================== 6️⃣ Optimizer & Scheduler ==================
+# ================== 6️⃣ Optimizer + Scheduler ==================
 optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate)
 
 effective_batch_size = batch_size * gradient_accumulation_steps
-num_training_steps = epochs * (approx_num_examples // effective_batch_size)
+num_training_steps = epochs * (len(train_loader) // gradient_accumulation_steps)
 num_warmup_steps = int(0.05 * num_training_steps)
 
 scheduler = get_scheduler(
@@ -137,6 +169,7 @@ for epoch in range(epochs):
 
         loop.set_postfix(loss=loss.item() * gradient_accumulation_steps)
 
+    # Evaluate validation PPL after each epoch
     ppl = evaluate_ppl(model, val_loader)
     print(f"Epoch {epoch+1} completed. Validation perplexity: {ppl:.2f}")
 
@@ -152,3 +185,4 @@ inputs = tokenizer(test_sentence, return_tensors="pt").to(device)
 outputs = model.generate(**inputs, max_new_tokens=20)
 decoded = tokenizer.decode(outputs[0], skip_special_tokens=True)
 print("Generated:", decoded)
+
