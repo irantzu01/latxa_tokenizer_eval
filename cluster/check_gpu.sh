@@ -1,11 +1,14 @@
 #!/bin/bash
-#SBATCH --job-name=latxa_500k_improved
-#SBATCH --output=logs/train_500k_improved_%j.out
-#SBATCH --error=logs/train_500k_improved_%j.err
-#SBATCH --time=24:00:00
-#SBATCH --mem=64G
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=4
+#SBATCH --job-name=latxa-test
+#SBATCH --output=logs/train/train_%A_%a.log
+#SBATCH --error=logs/train/train_%A_%a.err
+#SBATCH -n 1
+#SBATCH -c 8
+#SBATCH --gres=gpu:A100:1
+#SBATCH --time=02:00:00
+#SBATCH --partition=react
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH -C inet
 
 # Print GPU info
 echo "========================================"
