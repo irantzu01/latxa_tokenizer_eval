@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
 Lexical realignment for Latxa 7B using a new Basque tokenizer.
+100K dataset - Improved version
 
 - Freezes all middle layers
-- Only trains input embeddings and LM head
-- Trains on HPLT 10% + Wikipedia + Egunkaria from Hugging Face datasets
+- Trains ALL embeddings (not just new tokens) and LM head
+- Better initialization, higher learning rate, cosine scheduler
 """
 
 # ================== 0️⃣ Imports ==================
@@ -24,17 +25,6 @@ from tqdm import tqdm
 import math
 
 # ================== 1️⃣ Settings ==================
-# Allow overriding via command line arguments
-# Usage: python train.py [corpus_file] [output_suffix]
-# Example: python train.py data/basque_corpus_sampled_100k.txt 100k
-
-if len(sys.argv) > 1:
-    corpus_file = sys.argv[1]
-    output_suffix = sys.argv[2] if len(sys.argv) > 2 else os.path.basename(corpus_file).replace('.txt', '').replace('basque_corpus_sampled_', '')
-else:
-    corpus_file = "data/basque_corpus_sampled_small.txt"
-    output_suffix = "default"
-
 model_name = "HiTZ/latxa-7b-v1.2"
 tokenizer_dir = "basque_tokenizer_hf"
 
@@ -49,14 +39,15 @@ if torch.cuda.is_available():
 else:
     device = "cpu"
     print("\n⚠️  WARNING: No GPU detected! Training will be VERY slow on CPU.")
-    print("Make sure to request GPU in your SLURM job with: #SBATCH --gres=gpu:1\n")
+    print("Make sure to request GPU in your SLURM job with: #SBATCH --gres=gpu:A100:1\n")
 
-batch_size = 8                      # Increased for A100 (was 4)
+batch_size = 8                      # Increased for A100
 gradient_accumulation_steps = 4     # Reduced since batch_size is higher (effective batch still 32)
 learning_rate = 5e-4                # Increased from 1e-4 for better embedding learning
 epochs = 3
 max_length = 1024
-save_dir = os.path.expanduser(f"~/tmp/models/latxa7b_basque_aligned_{output_suffix}")
+save_dir = os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_100k_improved")
+corpus_file = "data/basque_corpus_sampled_small.txt"
 val_fraction = 0.01                  # Fraction of corpus for validation
 max_steps_per_epoch = None           # Set to a number to limit steps per epoch (e.g., 10000)
 save_total_limit = 1                 # Keep only the N most recent checkpoints (None = keep all)
@@ -68,6 +59,10 @@ print(f"Training Configuration")
 print(f"{'='*60}")
 print(f"Corpus file: {corpus_file}")
 print(f"Output directory: {save_dir}")
+print(f"Batch size: {batch_size}")
+print(f"Gradient accumulation: {gradient_accumulation_steps}")
+print(f"Effective batch size: {batch_size * gradient_accumulation_steps}")
+print(f"Learning rate: {learning_rate}")
 print(f"{'='*60}\n")
 
 # ================== 2️⃣ Load tokenizer ==================
