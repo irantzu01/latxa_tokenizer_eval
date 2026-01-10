@@ -9,6 +9,7 @@ Lexical realignment for Latxa 7B using a new Basque tokenizer.
 
 # ================== 0️⃣ Imports ==================
 import os
+import sys
 import torch
 import shutil
 from torch.utils.data import IterableDataset, DataLoader
@@ -23,22 +24,39 @@ from tqdm import tqdm
 import math
 
 # ================== 1️⃣ Settings ==================
+# Allow overriding via command line arguments
+# Usage: python train.py [corpus_file] [output_suffix]
+# Example: python train.py data/basque_corpus_sampled_100k.txt 100k
+
+if len(sys.argv) > 1:
+    corpus_file = sys.argv[1]
+    output_suffix = sys.argv[2] if len(sys.argv) > 2 else os.path.basename(corpus_file).replace('.txt', '').replace('basque_corpus_sampled_', '')
+else:
+    corpus_file = "data/basque_corpus_sampled.txt"
+    output_suffix = "default"
+
 model_name = "HiTZ/latxa-7b-v1.2"
 tokenizer_dir = "basque_tokenizer_hf"
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 batch_size = 4                      # Adjust per GPU memory
 gradient_accumulation_steps = 8     # Effective batch size = batch_size * grad_accum
-learning_rate = 1e-4
+learning_rate = 5e-4                # Increased from 1e-4 for better embedding learning
 epochs = 3
 max_length = 1024
-save_dir = os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_100K")  # Expand ~ to home directory
-corpus_file = "data/basque_corpus_sampled_small.txt"  # Using sampled corpus
+save_dir = os.path.expanduser(f"~/tmp/models/latxa7b_basque_aligned_{output_suffix}")
 val_fraction = 0.01                  # Fraction of corpus for validation
 max_steps_per_epoch = None           # Set to a number to limit steps per epoch (e.g., 10000)
 save_total_limit = 1                 # Keep only the N most recent checkpoints (None = keep all)
 
 os.makedirs(save_dir, exist_ok=True)
+
+print(f"\n{'='*60}")
+print(f"Training Configuration")
+print(f"{'='*60}")
+print(f"Corpus file: {corpus_file}")
+print(f"Output directory: {save_dir}")
+print(f"{'='*60}\n")
 
 # ================== 2️⃣ Load tokenizer ==================
 print("Loading tokenizer...")
@@ -78,10 +96,17 @@ print(f"New tokens: {len(new_token_ids)} tokens")
 old_embeddings = model.get_input_embeddings()
 model.resize_token_embeddings(len(tokenizer))
 
-# Initialize new embeddings with small random values
+# Initialize new embeddings: copy from similar tokens or use mean of existing embeddings
 embedding_weights = model.get_input_embeddings().weight.data
-for idx in new_token_ids:
-    embedding_weights[idx] = torch.randn(model.config.hidden_size, dtype=embedding_weights.dtype) * 0.02
+if len(new_token_ids) > 0:
+    # Calculate mean and std of existing embeddings for better initialization
+    existing_mean = embedding_weights[:len(latxa_vocab)].mean(dim=0)
+    existing_std = embedding_weights[:len(latxa_vocab)].std(dim=0).mean().item()
+    
+    print(f"Initializing {len(new_token_ids)} new embeddings with mean from existing tokens")
+    for idx in new_token_ids:
+        # Initialize with small random noise around the mean of existing embeddings
+        embedding_weights[idx] = existing_mean + torch.randn(model.config.hidden_size, dtype=embedding_weights.dtype) * (existing_std * 0.1)
 
 # Freeze all parameters
 for param in model.parameters():
@@ -91,19 +116,19 @@ for param in model.parameters():
 for param in model.get_output_embeddings().parameters():
     param.requires_grad = True
 
-# Unfreeze embeddings
+# Unfreeze ALL embeddings (not just new tokens)
 model.get_input_embeddings().weight.requires_grad = True
 
-# Freeze old token embeddings using a hook
-if len(old_token_ids) > 0:
-    old_idx_tensor = torch.tensor(old_token_ids, dtype=torch.long)
-    def zero_grad_old_tokens(grad):
-        if grad is not None:
-            grad.index_fill_(0, old_idx_tensor.to(grad.device), 0)
-        return grad
-    model.get_input_embeddings().weight.register_hook(zero_grad_old_tokens)
+# OPTION: Uncomment below to freeze old token embeddings (currently disabled for better learning)
+# if len(old_token_ids) > 0:
+#     old_idx_tensor = torch.tensor(old_token_ids, dtype=torch.long)
+#     def zero_grad_old_tokens(grad):
+#         if grad is not None:
+#             grad.index_fill_(0, old_idx_tensor.to(grad.device), 0)
+#         return grad
+#     model.get_input_embeddings().weight.register_hook(zero_grad_old_tokens)
 
-print("Middle layers frozen. Only new token embeddings + LM head will be trained.")
+print("Middle layers frozen. All token embeddings + LM head will be trained.")
 
 # Count trainable parameters
 trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -187,12 +212,12 @@ print(f"Effective batch size: {batch_size * gradient_accumulation_steps}")
 optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate)
 
 num_training_steps = epochs * (estimated_steps_per_epoch // gradient_accumulation_steps)
-num_warmup_steps = int(0.05 * num_training_steps)
+num_warmup_steps = int(0.1 * num_training_steps)  # Increased from 0.05 to 0.1
 print(f"Total training steps: {num_training_steps:,}")
 print(f"Warmup steps: {num_warmup_steps:,}")
 
 scheduler = get_scheduler(
-    "linear",
+    "cosine",  # Changed from "linear" to "cosine" for better convergence
     optimizer=optimizer,
     num_warmup_steps=num_warmup_steps,
     num_training_steps=num_training_steps
