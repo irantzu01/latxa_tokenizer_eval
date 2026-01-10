@@ -19,29 +19,34 @@ print("This uses reservoir sampling to handle large files efficiently.\n")
 random.seed(random_seed)
 reservoir = []
 
+line_count = 0
 with open(input_file, "r", encoding="utf-8") as f:
     for i, line in enumerate(f):
         line = line.strip()
         if not line:  # Skip empty lines
             continue
-            
-        if i < sample_size:
-            # Fill reservoir with first sample_size lines
+        
+        if len(reservoir) < sample_size:
+            # Fill reservoir with first sample_size non-empty lines
             reservoir.append(line)
         else:
             # Randomly replace elements with decreasing probability
-            j = random.randint(0, i)
+            j = random.randint(0, line_count)
             if j < sample_size:
                 reservoir[j] = line
         
+        line_count += 1
+        
         # Progress indicator
-        if (i + 1) % 100_000 == 0:
-            print(f"Processed {i+1:,} lines...")
+        if line_count % 100_000 == 0:
+            print(f"Processed {line_count:,} non-empty lines...")
 
 total_lines = i + 1
-print(f"\nTotal lines processed: {total_lines:,}")
+total_non_empty = line_count
+print(f"\nTotal lines in file: {total_lines:,}")
+print(f"Non-empty lines: {total_non_empty:,}")
 print(f"Lines sampled: {len(reservoir):,}")
-print(f"Sampling ratio: {len(reservoir)/total_lines*100:.2f}%\n")
+print(f"Sampling ratio: {len(reservoir)/total_non_empty*100:.2f}%\n")
 
 # ================== Save Sampled Data ==================
 print(f"Saving sampled data to {output_file}...")
