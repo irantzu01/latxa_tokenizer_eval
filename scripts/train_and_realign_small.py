@@ -32,15 +32,27 @@ if len(sys.argv) > 1:
     corpus_file = sys.argv[1]
     output_suffix = sys.argv[2] if len(sys.argv) > 2 else os.path.basename(corpus_file).replace('.txt', '').replace('basque_corpus_sampled_', '')
 else:
-    corpus_file = "data/basque_corpus_sampled.txt"
+    corpus_file = "data/basque_corpus_sampled_small.txt"
     output_suffix = "default"
 
 model_name = "HiTZ/latxa-7b-v1.2"
 tokenizer_dir = "basque_tokenizer_hf"
-device = "cuda" if torch.cuda.is_available() else "cpu"
 
-batch_size = 4                      # Adjust per GPU memory
-gradient_accumulation_steps = 8     # Effective batch size = batch_size * grad_accum
+# Check GPU availability
+if torch.cuda.is_available():
+    device = "cuda"
+    print(f"\n{'='*60}")
+    print(f"GPU detected!")
+    print(f"GPU name: {torch.cuda.get_device_name(0)}")
+    print(f"GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
+    print(f"{'='*60}\n")
+else:
+    device = "cpu"
+    print("\n⚠️  WARNING: No GPU detected! Training will be VERY slow on CPU.")
+    print("Make sure to request GPU in your SLURM job with: #SBATCH --gres=gpu:1\n")
+
+batch_size = 8                      # Increased for A100 (was 4)
+gradient_accumulation_steps = 4     # Reduced since batch_size is higher (effective batch still 32)
 learning_rate = 5e-4                # Increased from 1e-4 for better embedding learning
 epochs = 3
 max_length = 1024
@@ -100,13 +112,16 @@ model.resize_token_embeddings(len(tokenizer))
 embedding_weights = model.get_input_embeddings().weight.data
 if len(new_token_ids) > 0:
     # Calculate mean and std of existing embeddings for better initialization
-    existing_mean = embedding_weights[:len(latxa_vocab)].mean(dim=0)
-    existing_std = embedding_weights[:len(latxa_vocab)].std(dim=0).mean().item()
+    existing_embeddings = embedding_weights[:len(latxa_vocab)]
+    existing_mean = existing_embeddings.mean(dim=0)
+    existing_std = existing_embeddings.std(dim=0).mean().item()
     
     print(f"Initializing {len(new_token_ids)} new embeddings with mean from existing tokens")
     for idx in new_token_ids:
         # Initialize with small random noise around the mean of existing embeddings
-        embedding_weights[idx] = existing_mean + torch.randn(model.config.hidden_size, dtype=embedding_weights.dtype) * (existing_std * 0.1)
+        # Make sure the random tensor is on the same device as embedding_weights
+        noise = torch.randn(model.config.hidden_size, dtype=embedding_weights.dtype, device=embedding_weights.device)
+        embedding_weights[idx] = existing_mean + noise * (existing_std * 0.1)
 
 # Freeze all parameters
 for param in model.parameters():
