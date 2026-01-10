@@ -9,7 +9,7 @@ import os
 # ================== Settings ==================
 input_file = "data/basque_corpus.txt"
 output_file = "data/basque_corpus_sampled.txt"
-sample_size = 500_000  # Number of lines to sample (adjust as needed)
+sample_size = 100_000  # Number of lines to sample (adjust as needed)
 random_seed = 42
 
 # ================== Reservoir Sampling ==================
