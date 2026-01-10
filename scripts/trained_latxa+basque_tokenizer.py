@@ -10,6 +10,7 @@ Lexical realignment for Latxa 7B using a new Basque tokenizer.
 # ================== 0️⃣ Imports ==================
 import os
 import torch
+import shutil
 from torch.utils.data import IterableDataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 from transformers import (
@@ -31,10 +32,11 @@ gradient_accumulation_steps = 8     # Effective batch size = batch_size * grad_a
 learning_rate = 1e-4
 epochs = 3
 max_length = 1024
-save_dir = "latxa7b_basque_aligned"
+save_dir = os.path.expanduser("~/tmp/models/latxa7b_basque_aligned")  # Expand ~ to home directory
 corpus_file = "data/basque_corpus.txt"
 val_fraction = 0.01                  # Fraction of corpus for validation
 max_steps_per_epoch = None           # Set to a number to limit steps per epoch (e.g., 10000)
+save_total_limit = 1                 # Keep only the N most recent checkpoints (None = keep all)
 
 os.makedirs(save_dir, exist_ok=True)
 
@@ -215,6 +217,53 @@ def evaluate_ppl(model, dataloader, max_batches=100):
     perplexity = math.exp(avg_loss) if not math.isnan(avg_loss) else float("nan")
     return perplexity, avg_loss
 
+def cleanup_old_checkpoints(save_dir, save_total_limit, keep_best=True):
+    """
+    Keep only the most recent checkpoints and optionally the best checkpoint.
+    
+    Args:
+        save_dir: Base directory containing checkpoints
+        save_total_limit: Number of epoch checkpoints to keep (None = keep all)
+        keep_best: Whether to always keep the best checkpoint
+    """
+    if save_total_limit is None:
+        return
+    
+    # Find all epoch checkpoint directories
+    epoch_dirs = []
+    best_dir = None
+    
+    for item in os.listdir(save_dir):
+        item_path = os.path.join(save_dir, item)
+        if os.path.isdir(item_path):
+            if item.startswith("epoch-"):
+                try:
+                    epoch_num = int(item.split("-")[1])
+                    epoch_dirs.append((epoch_num, item_path))
+                except (ValueError, IndexError):
+                    continue
+            elif item.startswith("checkpoint-epoch"):
+                best_dir = item_path
+    
+    # Sort by epoch number (most recent last)
+    epoch_dirs.sort(key=lambda x: x[0])
+    
+    # Determine which checkpoints to delete
+    if len(epoch_dirs) > save_total_limit:
+        dirs_to_delete = epoch_dirs[:-save_total_limit]  # Keep only the last N
+        
+        for epoch_num, dir_path in dirs_to_delete:
+            # Don't delete the best checkpoint if keep_best is True
+            if keep_best and best_dir and os.path.samefile(dir_path, best_dir):
+                continue
+            
+            print(f"Removing old checkpoint: {dir_path}")
+            shutil.rmtree(dir_path)
+            
+            # Free up GPU memory if needed
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
 # ================== 8️⃣ Training loop ==================
 print("\n" + "="*50)
 print("Starting training...")
@@ -294,6 +343,10 @@ for epoch in range(epochs):
     model.save_pretrained(epoch_dir)
     tokenizer.save_pretrained(epoch_dir)
     print(f"✓ Checkpoint saved to {epoch_dir}")
+    
+    # Clean up old checkpoints to save space
+    cleanup_old_checkpoints(save_dir, save_total_limit, keep_best=True)
+    print(f"✓ Old checkpoints cleaned up (keeping last {save_total_limit})")
 
 # ================== 9️⃣ Save final model ==================
 final_dir = os.path.join(save_dir, "final")
