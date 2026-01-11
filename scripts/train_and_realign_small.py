@@ -46,8 +46,8 @@ gradient_accumulation_steps = 4     # Reduced since batch_size is higher (effect
 learning_rate = 5e-4                # Increased from 1e-4 for better embedding learning
 epochs = 3
 max_length = 1024
-save_dir = os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_100k_improved")
-corpus_file = "data/basque_corpus_sampled_small.txt"
+save_dir = os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k")
+corpus_file = "data/basque_corpus_sampled_250k.txt"
 val_fraction = 0.01                  # Fraction of corpus for validation
 max_steps_per_epoch = None           # Set to a number to limit steps per epoch (e.g., 10000)
 save_total_limit = 1                 # Keep only the N most recent checkpoints (None = keep all)
