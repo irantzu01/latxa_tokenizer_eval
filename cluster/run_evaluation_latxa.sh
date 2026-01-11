@@ -29,6 +29,6 @@ cd ~/MASTER/WiSe25/Lab\ Rotation/latxa_tokenizer_eval
 echo "Running python experiment..."
 
 # === 4. RUN YOUR PYTHON SCRIPT ===
-python scripts/new_model_evaluation.py
+python evaluation/new_model_evaluation.py
 
 echo "Job finished."
