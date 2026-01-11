@@ -28,7 +28,7 @@ echo "========================================"
 # source activate your_env_name
 
 # Run training
-python train_500k_improved.py
+python diagnose_model.py
 
 echo "========================================"
 echo "Job finished at: $(date)"
