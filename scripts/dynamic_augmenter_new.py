@@ -39,10 +39,72 @@ class DynamicAugmenter:
         self.cache_limit = cache_limit
         self.current_vocab_size = self.base_vocab_size
         
+        # ==================== BUILD ALIGNED EMBEDDING MATRIX ====================
+        print("Building aligned embedding matrix for hypernet...")
+        self._build_aligned_embeddings()
+        
         print(f"DynamicAugmenter initialized:")
         print(f"  Base vocab size: {self.base_vocab_size}")
         print(f"  Cache limit: {cache_limit}")
         print(f"  Device: {device}")
+    
+    def _build_aligned_embeddings(self):
+        """
+        Build an aligned embedding matrix that covers the hypernet's vocabulary,
+        using Latxa's embeddings where tokens overlap.
+        """
+        # Get vocabulary sizes
+        hypernet_vocab_size = len(self.hypernet_tokenizer)
+        latxa_vocab_size = len(self.latxa_tokenizer)
+        
+        print(f"  Latxa vocab size: {latxa_vocab_size}")
+        print(f"  Hypernet vocab size: {hypernet_vocab_size}")
+        
+        # Get Latxa embeddings
+        latxa_in_emb = self.model.get_input_embeddings().weight.data  # [32k, 4096]
+        latxa_out_emb = self.model.get_output_embeddings().weight.data  # [32k, 4096]
+        
+        # Concatenate for hypernet format
+        latxa_concat = torch.cat([latxa_in_emb, latxa_out_emb], dim=1)  # [32k, 8192]
+        
+        # Create aligned matrix for hypernet vocab
+        self.aligned_embeddings = torch.zeros(
+            hypernet_vocab_size,
+            8192,
+            dtype=latxa_concat.dtype,
+            device=self.device
+        )
+        
+        # Map overlapping tokens
+        latxa_vocab = self.latxa_tokenizer.get_vocab()
+        hypernet_vocab = self.hypernet_tokenizer.get_vocab()
+        
+        overlap_count = 0
+        for token_str, latxa_id in latxa_vocab.items():
+            if token_str in hypernet_vocab:
+                hypernet_id = hypernet_vocab[token_str]
+                if hypernet_id < hypernet_vocab_size:
+                    self.aligned_embeddings[hypernet_id] = latxa_concat[latxa_id]
+                    overlap_count += 1
+        
+        # For non-overlapping tokens, initialize with small random values
+        # This represents tokens in hypernet vocab but not in Latxa
+        unmapped_mask = (self.aligned_embeddings.abs().sum(dim=1) < 1e-6)
+        num_unmapped = unmapped_mask.sum().item()
+        
+        if num_unmapped > 0:
+            # Use mean and std from Latxa embeddings for better initialization
+            mean_emb = latxa_concat.mean(dim=0)
+            std_emb = latxa_concat.std(dim=0).mean().item()
+            
+            self.aligned_embeddings[unmapped_mask] = (
+                mean_emb.unsqueeze(0) + 
+                torch.randn(num_unmapped, 8192, dtype=latxa_concat.dtype, device=self.device) * std_emb * 0.02
+            )
+        
+        print(f"  Vocabulary overlap: {overlap_count}/{latxa_vocab_size} tokens ({100*overlap_count/latxa_vocab_size:.1f}%)")
+        print(f"  Unmapped tokens: {num_unmapped} (initialized randomly)")
+        print(f"✓ Aligned embeddings ready")
 
     def _ensure_capacity(self, n_new):
         """Resize model embeddings to accomodate n_new new ids."""
@@ -54,7 +116,7 @@ class DynamicAugmenter:
     def _predict_embeddings_for_tokens(self, tokens_list):
         """
         Predict embeddings for dynamic tokens using Zett hypernetwork.
-        Follows the exact approach from the Zett paper.
+        Uses pre-built aligned embeddings that include Latxa's context.
         Returns dict[token] -> (in_emb, out_emb) on CPU.
         """
 
@@ -63,7 +125,6 @@ class DynamicAugmenter:
         print(f"DEBUG: Sample tokens: {tokens_list[:5]}")
         
         # get_surface_form_matrix expects tokens in byte format (e.g., 'Ġhello')
-        # Make sure tokens are properly formatted
         surfaces = get_surface_form_matrix(
             tokens_list,  # Direct list of tokens
             maxlen=self.hypernet.config.hn_surface_maxlen,
@@ -77,28 +138,26 @@ class DynamicAugmenter:
         # Convert to tensor on device
         surfaces = torch.from_numpy(surfaces).to(self.device)
 
-        # ==================== BUILD SOURCE EMBEDDINGS ====================
-        # Concatenate input + output embeddings as per Zett paper
-        src_emb = torch.cat([
-            self.model.get_input_embeddings().weight.data,  # [vocab, 4096]
-            self.model.get_output_embeddings().weight.data,  # [vocab, 4096]
-        ], dim=1).to(self.device)  # [vocab, 8192]
-
+        # ==================== USE ALIGNED EMBEDDINGS ====================
+        # This matrix covers hypernet vocab but uses Latxa embeddings where possible
+        
         with torch.no_grad():
             try:
-                # Predict embeddings using hypernet
+                # Call hypernet WITH aligned source embeddings
+                # This gives the hypernet Latxa's context for generating new embeddings
                 pred_in, pred_out, _ = self.hypernet(
                     surfaces,
-                    source_embeddings=src_emb
+                    source_embeddings=self.aligned_embeddings
                 )
-                # pred_in: [batch, 4096] - input embeddings
-                # pred_out: [batch, 4096] - output embeddings
+                # pred_in: [batch, 4096] - input embeddings for Latxa
+                # pred_out: [batch, 4096] - output embeddings for Latxa
             except RuntimeError as e:
                 print(f"ERROR in hypernet call:")
                 print(f"  surfaces shape: {surfaces.shape}")
-                print(f"  src_emb shape: {src_emb.shape}")
+                print(f"  aligned_embeddings shape: {self.aligned_embeddings.shape}")
                 print(f"  surfaces dtype: {surfaces.dtype}, device: {surfaces.device}")
-                print(f"  surfaces min/max: {surfaces.min()}/{surfaces.max()}")
+                if surfaces.numel() > 0:
+                    print(f"  surfaces min/max: {surfaces.min().item()}/{surfaces.max().item()}")
                 print(f"  tokens_list sample: {tokens_list[:5]}")
                 raise e
 
