@@ -202,20 +202,28 @@ class DynamicAugmenter:
         surfaces = torch.tensor(surfaces, dtype=torch.long, device=self.device)
 
         # ==================== BUILD ALIGNED SOURCE EMBEDDINGS ====================
+        # Per Zett paper: concatenate input + output embeddings
+        # This is why we get 8192 (4096 + 4096)
+        
         # Get Latxa embeddings
-        latxa_embeddings = self.model.get_input_embeddings().weight  # [32000, 4096]
+        latxa_in_embeddings = self.model.get_input_embeddings().weight  # [32000, 4096]
+        latxa_out_embeddings = self.model.get_output_embeddings().weight  # [32000, 4096]
+        
+        # Concatenate input and output embeddings
+        latxa_concat_embeddings = torch.cat([
+            latxa_in_embeddings,
+            latxa_out_embeddings
+        ], dim=1)  # [32000, 8192]
         
         # Get hypernet vocab size
         hypernet_vocab_size = self.hypernet_tokenizer.vocab_size
         
-        # Get the actual output size from adapter (in case they're the same)
-        target_dim = self.adapter.llama3_hidden_size
-        
         # Create aligned embedding matrix for hypernet's vocab
+        # This should be [hypernet_vocab_size, 8192] (4096 in + 4096 out)
         aligned_embeddings = torch.zeros(
             hypernet_vocab_size, 
-            target_dim,
-            dtype=latxa_embeddings.dtype,
+            8192,  # Always 8192 = concat of in (4096) + out (4096)
+            dtype=latxa_concat_embeddings.dtype,
             device=self.device
         )
         
@@ -224,36 +232,33 @@ class DynamicAugmenter:
             if token in self.hypernet_tokenizer.get_vocab():
                 llama3_id = self.hypernet_tokenizer.get_vocab()[token]
                 if llama3_id < hypernet_vocab_size:
-                    latxa_emb = latxa_embeddings[latxa_id]
-                    # Project if needed (will be identity if same size)
-                    projected_emb = self.adapter.project_to_llama3(latxa_emb.unsqueeze(0)).squeeze(0)
-                    aligned_embeddings[llama3_id] = projected_emb
+                    # Use concatenated embedding directly (no projection needed here)
+                    aligned_embeddings[llama3_id] = latxa_concat_embeddings[latxa_id]
         
         # For unmapped tokens, use small random values
         unmapped_mask = (aligned_embeddings.sum(dim=1) == 0)
         if unmapped_mask.any():
             aligned_embeddings[unmapped_mask] = torch.randn(
-                unmapped_mask.sum(), target_dim,
+                unmapped_mask.sum(), 8192,
                 dtype=aligned_embeddings.dtype,
                 device=self.device
             ) * 0.02
 
         with torch.no_grad():
             try:
-                pred_in_llama3, pred_out_llama3, _ = self.hypernet(
+                # Call hypernet with concatenated source embeddings
+                pred_in, pred_out, _ = self.hypernet(
                     surfaces,
                     source_embeddings=aligned_embeddings
                 )
+                # pred_in: [batch, 4096] - input embeddings
+                # pred_out: [batch, 4096] - output embeddings
             except RuntimeError as e:
                 print(f"ERROR in hypernet call:")
                 print(f"  surfaces shape: {surfaces.shape}")
                 print(f"  aligned_embeddings shape: {aligned_embeddings.shape}")
                 print(f"  surfaces min/max: {surfaces.min()}/{surfaces.max()}")
                 raise e
-            
-            # Project predictions to Latxa size (will be identity if same size)
-            pred_in = self.adapter.project_to_latxa(pred_in_llama3)
-            pred_out = self.adapter.project_to_latxa(pred_out_llama3)
 
         # Return CPU tensors
         result = {}
