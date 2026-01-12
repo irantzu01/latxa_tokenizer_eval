@@ -128,16 +128,27 @@ class DynamicAugmenter:
         # ==================== INITIALIZE ADAPTER ====================
         print("Initializing Latxa-to-Llama3 projection adapter...")
         
-        # Get actual hidden sizes from the embeddings (not config)
+        # Get actual hidden sizes from the embeddings
         actual_embed_size = model.get_input_embeddings().weight.shape[1]
-        latxa_hidden_size = actual_embed_size  # This is the real embedding size (4096)
+        latxa_hidden_size = actual_embed_size  # Latxa: 4096
         
-        # Llama 3 8B hypernet expects 8192 dimensions
-        llama3_hidden_size = 8192
+        # Check hypernet's actual output size by looking at its config
+        if hasattr(hypernet.config, 'hn_model_size'):
+            llama3_hidden_size = hypernet.config.hn_model_size
+        elif hasattr(hypernet.config, 'hidden_size'):
+            llama3_hidden_size = hypernet.config.hidden_size
+        else:
+            # Default guess - but let's verify after first call
+            llama3_hidden_size = 4096
+            print("WARNING: Could not determine hypernet output size, assuming 4096")
         
         print(f"Latxa actual embedding size: {latxa_hidden_size}")
         print(f"Latxa config hidden size: {model.config.hidden_size}")
         print(f"Llama 3 hypernet expected size: {llama3_hidden_size}")
+        
+        # If both are the same size, we don't need projection
+        if latxa_hidden_size == llama3_hidden_size:
+            print("Both models have same hidden size - adapter will use identity")
         
         self.adapter = LatxaToLlama3Adapter(
             latxa_hidden_size=latxa_hidden_size,
@@ -191,33 +202,30 @@ class DynamicAugmenter:
         surfaces = torch.tensor(surfaces, dtype=torch.long, device=self.device)
 
         # ==================== BUILD ALIGNED SOURCE EMBEDDINGS ====================
-        # Problem: surfaces contains Llama3 token IDs, but we want to use Latxa embeddings
-        # Solution: Create a unified embedding matrix that covers both vocabularies
-        
         # Get Latxa embeddings
         latxa_embeddings = self.model.get_input_embeddings().weight  # [32000, 4096]
         
-        # Get hypernet vocab size from the model
+        # Get hypernet vocab size
         hypernet_vocab_size = self.hypernet_tokenizer.vocab_size
         
+        # Get the actual output size from adapter (in case they're the same)
+        target_dim = self.adapter.llama3_hidden_size
+        
         # Create aligned embedding matrix for hypernet's vocab
-        # For tokens that exist in both: use Latxa's embedding (projected)
-        # For tokens only in Llama3: use zero/random initialization
         aligned_embeddings = torch.zeros(
             hypernet_vocab_size, 
-            8192,  # Llama3 size
+            target_dim,
             dtype=latxa_embeddings.dtype,
             device=self.device
         )
         
         # Map overlapping tokens from Latxa to Llama3 vocab
         for token, latxa_id in self.vocab.items():
-            # Check if this token exists in hypernet tokenizer
             if token in self.hypernet_tokenizer.get_vocab():
                 llama3_id = self.hypernet_tokenizer.get_vocab()[token]
                 if llama3_id < hypernet_vocab_size:
-                    # Project Latxa embedding (4096) -> Llama3 size (8192)
                     latxa_emb = latxa_embeddings[latxa_id]
+                    # Project if needed (will be identity if same size)
                     projected_emb = self.adapter.project_to_llama3(latxa_emb.unsqueeze(0)).squeeze(0)
                     aligned_embeddings[llama3_id] = projected_emb
         
@@ -225,35 +233,27 @@ class DynamicAugmenter:
         unmapped_mask = (aligned_embeddings.sum(dim=1) == 0)
         if unmapped_mask.any():
             aligned_embeddings[unmapped_mask] = torch.randn(
-                unmapped_mask.sum(), 8192,
+                unmapped_mask.sum(), target_dim,
                 dtype=aligned_embeddings.dtype,
                 device=self.device
             ) * 0.02
 
         with torch.no_grad():
             try:
-                # Call hypernet WITH aligned source embeddings
                 pred_in_llama3, pred_out_llama3, _ = self.hypernet(
                     surfaces,
                     source_embeddings=aligned_embeddings
                 )
             except RuntimeError as e:
                 print(f"ERROR in hypernet call:")
-                print(f"  surfaces shape: {surfaces.shape}, dtype: {surfaces.dtype}, device: {surfaces.device}")
+                print(f"  surfaces shape: {surfaces.shape}")
                 print(f"  aligned_embeddings shape: {aligned_embeddings.shape}")
                 print(f"  surfaces min/max: {surfaces.min()}/{surfaces.max()}")
-                print(f"  hypernet vocab size: {hypernet_vocab_size}")
                 raise e
             
-            # pred_in_llama3 shape: [batch, 8192]
-            # pred_out_llama3 shape: [batch, 8192]
-            
-            # ==================== PROJECT DOWN ====================
-            # Project predictions to Latxa size: 8192 -> 4096
+            # Project predictions to Latxa size (will be identity if same size)
             pred_in = self.adapter.project_to_latxa(pred_in_llama3)
             pred_out = self.adapter.project_to_latxa(pred_out_llama3)
-            # pred_in shape: [batch, 4096]
-            # pred_out shape: [batch, 4096]
 
         # Return CPU tensors
         result = {}
