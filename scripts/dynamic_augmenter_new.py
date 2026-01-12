@@ -168,7 +168,7 @@ class DynamicAugmenter:
     def _predict_embeddings_for_tokens(self, tokens_list):
         """
         Predict embeddings for dynamic tokens using Zett hypernetwork.
-        Uses projection adapter to handle dimension mismatch.
+        Uses Latxa's embeddings (projected) as source context for the hypernet.
         Returns dict[token] -> (in_emb, out_emb) on CPU.
         """
 
@@ -176,7 +176,7 @@ class DynamicAugmenter:
         char_tokens = expand_to_char_tokens(tokens_list)
         char_strings = ["".join(chars) for chars in char_tokens]
 
-        # Build surface form matrix
+        # Build surface form matrix using hypernet's tokenizer
         surfaces = get_surface_form_matrix(
             char_strings,
             maxlen=self.hypernet.config.hn_surface_maxlen,
@@ -190,25 +190,59 @@ class DynamicAugmenter:
         # Convert to tensor on device
         surfaces = torch.tensor(surfaces, dtype=torch.long, device=self.device)
 
-        # ==================== KEY FIX ====================
-        # The hypernet expects source embeddings from ITS OWN tokenizer (Llama 3)
-        # NOT from Latxa! We need to get the hypernet's embeddings.
+        # ==================== BUILD ALIGNED SOURCE EMBEDDINGS ====================
+        # Problem: surfaces contains Llama3 token IDs, but we want to use Latxa embeddings
+        # Solution: Create a unified embedding matrix that covers both vocabularies
         
-        # Option 1: If hypernet has its own embeddings, use those
-        # Option 2: Create a mapping from hypernet vocab to Latxa embeddings
-        # Option 3: Just pass None and let hypernet use its own embeddings
+        # Get Latxa embeddings
+        latxa_embeddings = self.model.get_input_embeddings().weight  # [32000, 4096]
         
-        # Let's check what the hypernet actually needs
-        # For now, we'll NOT pass source_embeddings and let hypernet use its own
+        # Get hypernet vocab size from the model
+        hypernet_vocab_size = self.hypernet_tokenizer.vocab_size
         
+        # Create aligned embedding matrix for hypernet's vocab
+        # For tokens that exist in both: use Latxa's embedding (projected)
+        # For tokens only in Llama3: use zero/random initialization
+        aligned_embeddings = torch.zeros(
+            hypernet_vocab_size, 
+            8192,  # Llama3 size
+            dtype=latxa_embeddings.dtype,
+            device=self.device
+        )
+        
+        # Map overlapping tokens from Latxa to Llama3 vocab
+        for token, latxa_id in self.vocab.items():
+            # Check if this token exists in hypernet tokenizer
+            if token in self.hypernet_tokenizer.get_vocab():
+                llama3_id = self.hypernet_tokenizer.get_vocab()[token]
+                if llama3_id < hypernet_vocab_size:
+                    # Project Latxa embedding (4096) -> Llama3 size (8192)
+                    latxa_emb = latxa_embeddings[latxa_id]
+                    projected_emb = self.adapter.project_to_llama3(latxa_emb.unsqueeze(0)).squeeze(0)
+                    aligned_embeddings[llama3_id] = projected_emb
+        
+        # For unmapped tokens, use small random values
+        unmapped_mask = (aligned_embeddings.sum(dim=1) == 0)
+        if unmapped_mask.any():
+            aligned_embeddings[unmapped_mask] = torch.randn(
+                unmapped_mask.sum(), 8192,
+                dtype=aligned_embeddings.dtype,
+                device=self.device
+            ) * 0.02
+
         with torch.no_grad():
             try:
-                # Call hypernet WITHOUT source_embeddings - it will use its own
-                pred_in_llama3, pred_out_llama3, _ = self.hypernet(surfaces)
+                # Call hypernet WITH aligned source embeddings
+                pred_in_llama3, pred_out_llama3, _ = self.hypernet(
+                    surfaces,
+                    source_embeddings=aligned_embeddings
+                )
             except RuntimeError as e:
                 print(f"ERROR in hypernet call:")
                 print(f"  surfaces shape: {surfaces.shape}, dtype: {surfaces.dtype}, device: {surfaces.device}")
+                print(f"  aligned_embeddings shape: {aligned_embeddings.shape}")
                 print(f"  surfaces min/max: {surfaces.min()}/{surfaces.max()}")
+                print(f"  hypernet vocab size: {hypernet_vocab_size}")
                 raise e
             
             # pred_in_llama3 shape: [batch, 8192]
