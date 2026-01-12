@@ -47,7 +47,7 @@ latxa_tokenizer = AutoTokenizer.from_pretrained("HiTZ/latxa-7b-v1.2")
 model.to(device)
 model.eval()
 print(f"✓ Original Latxa model loaded")
-print(model.get_input_embeddings().weight.shape[1])
+print(f"Latxa embedding size: {model.get_input_embeddings().weight.shape[1]}")
 
 print("Loading hypernet for dynamic tokenization...")
 hypernet = AutoModel.from_pretrained(
@@ -68,7 +68,7 @@ dynamic_bpe = Dynamic_BPE(
 print("✓ Dynamic BPE initialized")
 
 # ==================== INITIALIZE DYNAMIC AUGMENTER ====================
-print("Initializing dynamic augmenter with projection adapter...")
+print("Initializing dynamic augmenter...")
 augmenter = DynamicAugmenter(
     model=model,
     latxa_tokenizer=latxa_tokenizer,  # Using ORIGINAL Latxa tokenizer
@@ -211,42 +211,3 @@ print(f"Current vocab size: {augmenter.current_vocab_size}")
 print(f"Dynamic tokens cached: {len(augmenter.cache)}")
 print(f"Results saved to: {results_path}")
 print(f"{'='*60}\n")
-
-# ==================== COMPARE WITH BASELINE ====================
-baseline_results = "cache/eusproficiency_latxa_eval_results.jsonl"
-if os.path.exists(baseline_results):
-    print("\nComparing with baseline Latxa (static tokenization)...")
-    baseline_correct = 0
-    baseline_total = 0
-    
-    with open(baseline_results) as f:
-        for line in f:
-            result = json.loads(line)
-            if result["correct"]:
-                baseline_correct += 1
-            baseline_total += 1
-    
-    baseline_accuracy = baseline_correct / baseline_total
-    improvement = accuracy - baseline_accuracy
-    
-    print(f"Latxa (static) accuracy: {baseline_accuracy:.4f}")
-    print(f"Latxa (dynamic) accuracy: {accuracy:.4f}")
-    print(f"Dynamic improvement: {improvement:+.4f} ({improvement*100:+.2f}%)")
-else:
-    print(f"\nBaseline results not found at {baseline_results}")
-    print("Run the baseline evaluation first to compare.")
-
-# ==================== SAVE ADAPTER ====================
-print("\nSaving trained adapter...")
-augmenter.save_adapter(f"models/{MODEL_NAME}_adapter.pt")
-print("✓ Adapter saved for future use")
-
-print("\n" + "="*60)
-print("Summary:")
-print("="*60)
-print(f"Model: Original Latxa 7B")
-print(f"Tokenization: Dynamic BPE")
-print(f"Adapter: Latxa (8192) <-> Llama3 (4096)")
-print(f"Dynamic tokens added: {len(augmenter.cache)}")
-print(f"Final accuracy: {accuracy:.4f}")
-print("="*60)
