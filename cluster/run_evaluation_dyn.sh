@@ -29,6 +29,6 @@ cd ~/MASTER/WiSe25/Lab\ Rotation/latxa_tokenizer_eval
 echo "Running python experiment..."
 
 # === 4. RUN YOUR PYTHON SCRIPT ===
-python evaluation/evaluation_eus_proficiency_with_dynamic_augmenter.py
+python scripts/evaluation_eus_proficiency_with_dynamic_augmenter.py
 
 echo "Job finished."
