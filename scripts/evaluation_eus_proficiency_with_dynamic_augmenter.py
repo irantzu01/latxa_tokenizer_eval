@@ -47,6 +47,7 @@ latxa_tokenizer = AutoTokenizer.from_pretrained("HiTZ/latxa-7b-v1.2")
 model.to(device)
 model.eval()
 print(f"✓ Original Latxa model loaded")
+print(model.get_input_embeddings().weight.shape[1])
 
 print("Loading hypernet for dynamic tokenization...")
 hypernet = AutoModel.from_pretrained(
