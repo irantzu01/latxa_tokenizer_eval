@@ -2,59 +2,53 @@ import sys
 import os
 import json
 
-
-
 project_root = os.path.expanduser(
     "~/MASTER/WiSe25/Lab Rotation/dynamic-tokenization"
 )
 sys.path.append(project_root)
 
+# Add path to your scripts directory
+scripts_path = os.path.expanduser(
+    "~/MASTER/WiSe25/Lab Rotation/latxa_tokenizer_eval/scripts"
+)
+sys.path.append(scripts_path)
+
+from evaluation_helper_functions import (
+    dynamic_tokenize_texts,
+    build_batch_tensors,
+    score_choices
+)
 
 from tokenizations.dynamic_bpe import Dynamic_BPE
-from transformers import AutoTokenizer, AutoModel, AutoModelForCausalLM
+from dynamic_augmenter import DynamicAugmenter
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel
 import torch
-from zett.utils import get_surface_form_matrix
-from collections import Counter
 from datasets import load_dataset
-import numpy as np
-import matplotlib.pyplot as plt
 from tqdm import tqdm
-import numpy as np
-import torch
+import random
 
+# ==================== CONFIGURATION ====================
+MODEL_NAME = "latxa_dynamic"
 
+print(f"\n{'='*60}")
+print(f"Evaluating ORIGINAL Latxa with dynamic tokenization")
+print(f"{'='*60}\n")
 
-def format_prompt(question, candidates):
-    return (
-        f"Galdera: {question}\n"
-        f"A: {candidates[0]}\n"
-        f"B: {candidates[1]}\n"
-        f"C: {candidates[2]}\n"
-        f"D: {candidates[3]}\n"
-        f"Erantzuna:"
-    )
-
-
-#Load the EusProficiency dataset and prepare evaluation items
+# ==================== LOAD DATASET ====================
 ds = load_dataset("HiTZ/EusProficiency", split="test")
 
-CHOICES = [" A", " B", " C", " D"]
-evaluation_items = []
-for item in ds:
-    prompt = format_prompt(item["question"], item["candidates"])
-    
-    choice_texts = [prompt + choice for choice in CHOICES]
+# ==================== LOAD ORIGINAL LATXA MODEL ====================
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
 
-    evaluation_items.append({
-        "prompt": prompt,
-        "choice_texts": choice_texts,   # length 4
-        "answer": item["answer"]        # int: 0–3
-    })
-print(evaluation_items[0])
-print("Evaluation items prepared:", len(evaluation_items))
+print("Loading ORIGINAL Latxa model and tokenizer...")
+model = AutoModelForCausalLM.from_pretrained("HiTZ/latxa-7b-v1.2")
+latxa_tokenizer = AutoTokenizer.from_pretrained("HiTZ/latxa-7b-v1.2")
+model.to(device)
+model.eval()
+print(f"✓ Original Latxa model loaded")
 
-
-# Load hypernetwork
+print("Loading hypernet for dynamic tokenization...")
 hypernet = AutoModel.from_pretrained(
     "benjamin/zett-hypernetwork-Meta-Llama-3-8B-experimental",
     trust_remote_code=True
@@ -62,157 +56,196 @@ hypernet = AutoModel.from_pretrained(
 hypernet_tokenizer = AutoTokenizer.from_pretrained(
     "benjamin/zett-hypernetwork-Meta-Llama-3-8B-experimental"
 )
+print("✓ Hypernet loaded")
+
+# ==================== INITIALIZE DYNAMIC TOKENIZER ====================
+print("Initializing dynamic BPE tokenizer...")
 dynamic_bpe = Dynamic_BPE(
     tokenizer=hypernet_tokenizer,
     tokenizer_boundary="pretokens",
 )
-print("Hypernetwork + tokenizer + Dynamic BPE ready.")
+print("✓ Dynamic BPE initialized")
 
-
-def dynamic_tokenize_texts(texts, dynamic_bpe, batch_size=128, max_merges=10):
-    """
-    texts: list[str]
-    returns: list[list[str]]  (dynamic tokens per text)
-    """
-    all_tokens = []
-
-    for i in tqdm(range(0, len(texts), batch_size), desc="Dynamic BPE"):
-        batch_texts = texts[i:i+batch_size]
-        batch_examples = [{"text": t} for t in batch_texts]
-
-        dyn_tokens, _, _, _ = dynamic_bpe.tokenize_batch(
-            batch_examples=batch_examples,
-            max_nr_merges=max_merges,
-            mlm=True
-        )
-
-        all_tokens.extend(dyn_tokens)
-
-    return all_tokens
-
-for item in evaluation_items:
-    dynamic_choice_tokens = dynamic_tokenize_texts(
-        item["choice_texts"],
-        dynamic_bpe,
-        batch_size=4
-    )
-    # Ensure structure: list[list[str]]
-    assert isinstance(dynamic_choice_tokens, list)
-    assert isinstance(dynamic_choice_tokens[0], list)
-    item["dynamic_tokens"] = dynamic_choice_tokens
-
-print("Dynamic tokenization completed.")
-
-
-
-from dynamic_augmenter import DynamicAugmenter
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-#Load Latxa tokenizer and model
-latxa_tokenizer = AutoTokenizer.from_pretrained("HiTZ/latxa-7b-v1.2")
-model = AutoModelForCausalLM.from_pretrained("HiTZ/latxa-7b-v1.2")
-model = model.to(device)
-print("Latxa model and tokenizer loaded.")
-
-# Initialize DynamicAugmenter
+# ==================== INITIALIZE DYNAMIC AUGMENTER ====================
+print("Initializing dynamic augmenter with projection adapter...")
 augmenter = DynamicAugmenter(
     model=model,
-    latxa_tokenizer=latxa_tokenizer,
+    latxa_tokenizer=latxa_tokenizer,  # Using ORIGINAL Latxa tokenizer
     hypernet=hypernet,
     hypernet_tokenizer=hypernet_tokenizer,
-    cache_limit=50_000,   # safe default
+    cache_limit=50000,
     device=device
 )
-print("DynamicAugmenter ready.")
+print("✓ Dynamic augmenter initialized")
 
-
-# Convert dynamic tokens → token IDs using DynamicAugmenter
-all_choice_token_ids = []
-
-for item in tqdm(evaluation_items, desc="Mapping dynamic tokens to IDs"):
-    choice_token_ids = augmenter.tokens_to_ids(item["dynamic_tokens"])
-    all_choice_token_ids.append(choice_token_ids)
-
-print("Dynamic token → ID conversion completed.")
-
-
-# Build batch tensors
-def build_batch_tensors(batch_ids, pad_id, device):
-    """
-    batch_ids: list[list[int]]  (len = 4 choices)
-    """
-    max_len = max(len(seq) for seq in batch_ids)
-
-    input_ids = torch.full(
-        (len(batch_ids), max_len),
-        pad_id,
-        dtype=torch.long,
-        device=device
+# ==================== HELPER FUNCTIONS ====================
+def build_doc_text(item):
+    return (
+        f"Galdera: {item['question']}\n"
+        f"A: {item['candidates'][0]}\n"
+        f"B: {item['candidates'][1]}\n"
+        f"C: {item['candidates'][2]}\n"
+        f"D: {item['candidates'][3]}\n"
+        f"Erantzuna:"
     )
 
-    attention_mask = torch.zeros_like(input_ids)
+def build_fewshot_example(item):
+    answer_letter = ["A", "B", "C", "D"][item["answer"]]
+    return build_doc_text(item) + " " + answer_letter
 
-    for i, seq in enumerate(batch_ids):
-        seq = torch.tensor(seq, dtype=torch.long, device=device)
-        input_ids[i, :len(seq)] = seq
-        attention_mask[i, :len(seq)] = 1
+def build_fewshot_context(ds, current_idx, k=5, seed=42):
+    rng = random.Random(seed + current_idx)
+    # pool excludes current example
+    pool = [ds[i] for i in range(len(ds)) if i != current_idx]
+    fewshot_examples = rng.sample(pool, k)
+    texts = [build_fewshot_example(ex) for ex in fewshot_examples]
+    return "\n\n".join(texts)
 
-    return input_ids, attention_mask
+# ==================== TOKENIZATION WITH DYNAMIC BPE ====================
+CHOICES = [" A", " B", " C", " D"]
 
+# Determine pad_id from ORIGINAL Latxa tokenizer
+pad_id = latxa_tokenizer.pad_token_id
+if pad_id is None:
+    pad_id = latxa_tokenizer.eos_token_id
 
-# Multiple-choice scoring (log-likelihood of last token)
-@torch.no_grad()
-def score_choices(model, input_ids, attention_mask):
-    """
-    input_ids: (4, seq_len)
-    Returns: tensor of shape (4,) with log-likelihood scores
-    """
-    outputs = model(
-        input_ids=input_ids,
-        attention_mask=attention_mask
-    )
+# Create cache directory
+os.makedirs("cache", exist_ok=True)
 
-    logits = outputs.logits  # (4, seq_len, vocab_size)
+cache_file = f"cache/eusproficiency_{MODEL_NAME}_fewshot_tokenized.jsonl"
 
-    last_token_positions = attention_mask.sum(dim=1) - 1
-    scores = []
+print(f"\nTokenizing dataset with dynamic BPE...")
+print(f"Cache file: {cache_file}")
 
-    for i in range(input_ids.size(0)):
-        pos = last_token_positions[i]
-        token_id = input_ids[i, pos]
-        log_probs = torch.log_softmax(logits[i, pos], dim=-1)
-        scores.append(log_probs[token_id])
+with open(cache_file, "w") as f:
+    for idx, item in enumerate(tqdm(ds, desc=f"Tokenizing ({MODEL_NAME})")):
+        fewshot_context = build_fewshot_context(ds, idx, k=5)
+        query_text = build_doc_text(item)
+        prompt_text = fewshot_context + "\n\n" + query_text
+        
+        # Tokenize with dynamic BPE
+        prompt_tokens = dynamic_bpe.tokenize_text(prompt_text)
+        
+        # Tokenize choices with dynamic BPE
+        choice_tokens = {}
+        for c in ["A", "B", "C", "D"]:
+            choice_text = " " + c
+            choice_tokens[c] = dynamic_bpe.tokenize_text(choice_text)
+        
+        f.write(json.dumps({
+            "id": idx,
+            "prompt_tokens": prompt_tokens,
+            "choice_tokens": choice_tokens,
+            "gold": item["answer"]
+        }) + "\n")
 
-    return torch.stack(scores)
+print("✓ Dynamic tokenization cached")
 
-
-# Evaluation loop
-pad_id = latxa_tokenizer.pad_token_id or latxa_tokenizer.eos_token_id
-
+# ==================== EVALUATION ====================
 correct = 0
 total = 0
 
-model.eval()
+results_path = f"cache/eusproficiency_{MODEL_NAME}_eval_results.jsonl"
 
-for item, choice_ids in tqdm(
-    zip(evaluation_items, all_choice_token_ids),
-    total=len(evaluation_items),
-    desc="Evaluating"
-):
-    input_ids, attention_mask = build_batch_tensors(
-        choice_ids,
-        pad_id,
-        device
-    )
+print(f"\nEvaluating model with dynamic augmentation...")
+print(f"Results will be saved to: {results_path}")
 
-    scores = score_choices(model, input_ids, attention_mask)
-    predicted = torch.argmax(scores).item()
+with open(cache_file) as fin, \
+     open(results_path, "w") as fout:
 
-    if predicted == item["answer"]:
-        correct += 1
-    total += 1
+    for line in tqdm(fin, desc=f"Evaluating ({MODEL_NAME})"):
 
+        item = json.loads(line)
+
+        # ----- Convert dynamic tokens to IDs using augmenter -----
+        prompt_tokens = item["prompt_tokens"]
+        
+        # Convert prompt tokens to IDs
+        prompt_ids_list = augmenter.tokens_to_ids([prompt_tokens])
+        prompt_ids = prompt_ids_list[0]
+        
+        # ----- Build full sequences for each choice -----
+        full_ids = []
+        for c in ["A", "B", "C", "D"]:
+            choice_tokens = item["choice_tokens"][c]
+            
+            # Convert choice tokens to IDs
+            choice_ids_list = augmenter.tokens_to_ids([choice_tokens])
+            choice_ids = choice_ids_list[0]
+            
+            # Combine prompt + choice
+            full_ids.append(prompt_ids + choice_ids)
+        
+        # ----- Batch + score -----
+        input_ids, attention_mask = build_batch_tensors(
+            full_ids, pad_id, device
+        )
+        
+        scores = score_choices(model, input_ids, attention_mask)
+        pred = torch.argmax(scores).item()
+        is_correct = (pred == item["gold"])
+        
+        # ----- Accumulate -----
+        if is_correct:
+            correct += 1
+        total += 1
+        
+        # ----- Save instance result -----
+        fout.write(json.dumps({
+            "id": item["id"],
+            "gold": item["gold"],
+            "prediction": pred,
+            "correct": is_correct,
+            "scores": scores.tolist()
+        }) + "\n")
 
 accuracy = correct / total
-print(f"\nFinal accuracy (Dynamic BPE + Hypernet): {accuracy:.4f}")
+
+print(f"\n{'='*60}")
+print(f"Results for: {MODEL_NAME}")
+print(f"{'='*60}")
+print(f"Accuracy: {accuracy:.4f} ({correct}/{total})")
+print(f"Base vocab size: {augmenter.base_vocab_size}")
+print(f"Current vocab size: {augmenter.current_vocab_size}")
+print(f"Dynamic tokens cached: {len(augmenter.cache)}")
+print(f"Results saved to: {results_path}")
+print(f"{'='*60}\n")
+
+# ==================== COMPARE WITH BASELINE ====================
+baseline_results = "cache/eusproficiency_latxa_eval_results.jsonl"
+if os.path.exists(baseline_results):
+    print("\nComparing with baseline Latxa (static tokenization)...")
+    baseline_correct = 0
+    baseline_total = 0
+    
+    with open(baseline_results) as f:
+        for line in f:
+            result = json.loads(line)
+            if result["correct"]:
+                baseline_correct += 1
+            baseline_total += 1
+    
+    baseline_accuracy = baseline_correct / baseline_total
+    improvement = accuracy - baseline_accuracy
+    
+    print(f"Latxa (static) accuracy: {baseline_accuracy:.4f}")
+    print(f"Latxa (dynamic) accuracy: {accuracy:.4f}")
+    print(f"Dynamic improvement: {improvement:+.4f} ({improvement*100:+.2f}%)")
+else:
+    print(f"\nBaseline results not found at {baseline_results}")
+    print("Run the baseline evaluation first to compare.")
+
+# ==================== SAVE ADAPTER ====================
+print("\nSaving trained adapter...")
+augmenter.save_adapter(f"models/{MODEL_NAME}_adapter.pt")
+print("✓ Adapter saved for future use")
+
+print("\n" + "="*60)
+print("Summary:")
+print("="*60)
+print(f"Model: Original Latxa 7B")
+print(f"Tokenization: Dynamic BPE")
+print(f"Adapter: Latxa (8192) <-> Llama3 (4096)")
+print(f"Dynamic tokens added: {len(augmenter.cache)}")
+print(f"Final accuracy: {accuracy:.4f}")
+print("="*60)
