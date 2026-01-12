@@ -190,40 +190,32 @@ class DynamicAugmenter:
         # Convert to tensor on device
         surfaces = torch.tensor(surfaces, dtype=torch.long, device=self.device)
 
-        # Get source embeddings from Latxa (should be [vocab_size, 4096])
-        source_embeddings = self.model.get_input_embeddings().weight
-
+        # ==================== KEY FIX ====================
+        # The hypernet expects source embeddings from ITS OWN tokenizer (Llama 3)
+        # NOT from Latxa! We need to get the hypernet's embeddings.
+        
+        # Option 1: If hypernet has its own embeddings, use those
+        # Option 2: Create a mapping from hypernet vocab to Latxa embeddings
+        # Option 3: Just pass None and let hypernet use its own embeddings
+        
+        # Let's check what the hypernet actually needs
+        # For now, we'll NOT pass source_embeddings and let hypernet use its own
+        
         with torch.no_grad():
-            # ==================== PROJECT UP ====================
-            # Project source embeddings from 4096 -> 8192 for hypernet
-            source_embeddings_projected = self.adapter.project_to_llama3(source_embeddings)
-            # source_embeddings_projected shape: [vocab_size, 8192]
-            
-            # Check for NaN or inf
-            if torch.isnan(source_embeddings_projected).any() or torch.isinf(source_embeddings_projected).any():
-                print("ERROR: source_embeddings_projected contains NaN or Inf!")
-                raise ValueError("Invalid values in projected embeddings")
-            
-            # ==================== RUN HYPERNET ====================
-            # Now hypernet receives 8192-dim embeddings (correct size)
             try:
-                pred_in_llama3, pred_out_llama3, _ = self.hypernet(
-                    surfaces,
-                    source_embeddings=source_embeddings_projected
-                )
+                # Call hypernet WITHOUT source_embeddings - it will use its own
+                pred_in_llama3, pred_out_llama3, _ = self.hypernet(surfaces)
             except RuntimeError as e:
                 print(f"ERROR in hypernet call:")
                 print(f"  surfaces shape: {surfaces.shape}, dtype: {surfaces.dtype}, device: {surfaces.device}")
-                print(f"  source_embeddings_projected shape: {source_embeddings_projected.shape}, dtype: {source_embeddings_projected.dtype}, device: {source_embeddings_projected.device}")
                 print(f"  surfaces min/max: {surfaces.min()}/{surfaces.max()}")
-                print(f"  source_embeddings_projected min/max: {source_embeddings_projected.min()}/{source_embeddings_projected.max()}")
                 raise e
             
             # pred_in_llama3 shape: [batch, 8192]
             # pred_out_llama3 shape: [batch, 8192]
             
             # ==================== PROJECT DOWN ====================
-            # Project predictions back to Latxa size: 8192 -> 4096
+            # Project predictions to Latxa size: 8192 -> 4096
             pred_in = self.adapter.project_to_latxa(pred_in_llama3)
             pred_out = self.adapter.project_to_latxa(pred_out_llama3)
             # pred_in shape: [batch, 4096]
