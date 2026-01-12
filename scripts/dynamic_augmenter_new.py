@@ -192,9 +192,6 @@ class DynamicAugmenter:
 
         # Get source embeddings from Latxa (should be [vocab_size, 4096])
         source_embeddings = self.model.get_input_embeddings().weight
-        
-        print(f"DEBUG: source_embeddings shape: {source_embeddings.shape}")
-        print(f"DEBUG: surfaces shape: {surfaces.shape}")
 
         with torch.no_grad():
             # ==================== PROJECT UP ====================
@@ -202,14 +199,26 @@ class DynamicAugmenter:
             source_embeddings_projected = self.adapter.project_to_llama3(source_embeddings)
             # source_embeddings_projected shape: [vocab_size, 8192]
             
-            print(f"DEBUG: source_embeddings_projected shape: {source_embeddings_projected.shape}")
+            # Check for NaN or inf
+            if torch.isnan(source_embeddings_projected).any() or torch.isinf(source_embeddings_projected).any():
+                print("ERROR: source_embeddings_projected contains NaN or Inf!")
+                raise ValueError("Invalid values in projected embeddings")
             
             # ==================== RUN HYPERNET ====================
             # Now hypernet receives 8192-dim embeddings (correct size)
-            pred_in_llama3, pred_out_llama3, _ = self.hypernet(
-                surfaces,
-                source_embeddings=source_embeddings_projected
-            )
+            try:
+                pred_in_llama3, pred_out_llama3, _ = self.hypernet(
+                    surfaces,
+                    source_embeddings=source_embeddings_projected
+                )
+            except RuntimeError as e:
+                print(f"ERROR in hypernet call:")
+                print(f"  surfaces shape: {surfaces.shape}, dtype: {surfaces.dtype}, device: {surfaces.device}")
+                print(f"  source_embeddings_projected shape: {source_embeddings_projected.shape}, dtype: {source_embeddings_projected.dtype}, device: {source_embeddings_projected.device}")
+                print(f"  surfaces min/max: {surfaces.min()}/{surfaces.max()}")
+                print(f"  source_embeddings_projected min/max: {source_embeddings_projected.min()}/{source_embeddings_projected.max()}")
+                raise e
+            
             # pred_in_llama3 shape: [batch, 8192]
             # pred_out_llama3 shape: [batch, 8192]
             

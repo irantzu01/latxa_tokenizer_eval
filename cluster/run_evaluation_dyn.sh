@@ -9,6 +9,9 @@
 #SBATCH --partition=react
 #SBATCH -C inet
 
+# Enable CUDA debugging
+export CUDA_LAUNCH_BLOCKING=1
+
 echo "Starting job $SLURM_JOB_ID on node $(hostname)"
 
 # === 1. LOAD MODULES (MAY VARY BY CLUSTER) ===
