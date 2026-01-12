@@ -127,12 +127,15 @@ class DynamicAugmenter:
         # ==================== INITIALIZE ADAPTER ====================
         print("Initializing Latxa-to-Llama3 projection adapter...")
         
-        # Get actual hidden sizes from the models
-        latxa_hidden_size = model.config.hidden_size  # Should be 8192 for Latxa
+        # Get actual hidden sizes from the embeddings (not config)
+        actual_embed_size = model.get_input_embeddings().weight.shape[1]
+        latxa_hidden_size = actual_embed_size  # This is the real embedding size
+        
         # Llama 3 8B has hidden_size 4096
         llama3_hidden_size = 4096
         
-        print(f"Latxa hidden size: {latxa_hidden_size}")
+        print(f"Latxa actual embedding size: {latxa_hidden_size}")
+        print(f"Latxa config hidden size: {model.config.hidden_size}")
         print(f"Llama 3 hidden size: {llama3_hidden_size}")
         
         self.adapter = LatxaToLlama3Adapter(
