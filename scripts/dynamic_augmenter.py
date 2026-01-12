@@ -189,18 +189,22 @@ class DynamicAugmenter:
         # Convert to tensor on device
         surfaces = torch.tensor(surfaces, dtype=torch.long, device=self.device)
 
-        # Get source embeddings from Latxa (8192 dims)
+        # Get source embeddings from Latxa (should be [vocab_size, 4096])
         source_embeddings = self.model.get_input_embeddings().weight
+        
+        print(f"DEBUG: source_embeddings shape: {source_embeddings.shape}")
+        print(f"DEBUG: surfaces shape: {surfaces.shape}")
 
         with torch.no_grad():
             # ==================== PROJECT DOWN ====================
-            # Project source embeddings from 8192 -> 4096 for hypernet
-            # source_embeddings shape: [vocab_size, 8192]
+            # Project source embeddings from potentially different size to 4096 for hypernet
             source_embeddings_projected = self.adapter.project_down(source_embeddings)
-            # source_embeddings_projected shape: [vocab_size, 4096]
+            # source_embeddings_projected shape: [vocab_size, llama3_hidden_size]
+            
+            print(f"DEBUG: source_embeddings_projected shape: {source_embeddings_projected.shape}")
             
             # ==================== RUN HYPERNET ====================
-            # Now hypernet receives 4096-dim embeddings (correct size)
+            # Now hypernet receives correct-sized embeddings
             pred_in_llama3, pred_out_llama3, _ = self.hypernet(
                 surfaces,
                 source_embeddings=source_embeddings_projected
