@@ -123,14 +123,14 @@ with open(cache_file, "w") as f:
         query_text = build_doc_text(item)
         prompt_text = fewshot_context + "\n\n" + query_text
         
-        # Tokenize with dynamic BPE
-        prompt_tokens = dynamic_bpe.tokenize_text(prompt_text)
+        # Tokenize with dynamic BPE using the helper function
+        prompt_tokens = dynamic_tokenize_texts([prompt_text], dynamic_bpe, max_merges=10)[0]
         
         # Tokenize choices with dynamic BPE
         choice_tokens = {}
         for c in ["A", "B", "C", "D"]:
             choice_text = " " + c
-            choice_tokens[c] = dynamic_bpe.tokenize_text(choice_text)
+            choice_tokens[c] = dynamic_tokenize_texts([choice_text], dynamic_bpe, max_merges=10)[0]
         
         f.write(json.dumps({
             "id": idx,
