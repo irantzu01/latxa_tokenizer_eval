@@ -38,18 +38,46 @@ class LatxaToLlama3Adapter(nn.Module):
     def _initialize_projections(self):
         """Initialize projections intelligently."""
         with torch.no_grad():
-            # Down projection: average pairs of dimensions
-            down_weight = torch.zeros(self.llama3_hidden_size, self.latxa_hidden_size)
-            for i in range(self.llama3_hidden_size):
-                down_weight[i, 2*i] = 0.5
-                down_weight[i, 2*i + 1] = 0.5
-            self.down_projection.weight.data = down_weight
-            
-            # Up projection: copy first half, then copy again for second half
-            up_weight = torch.zeros(self.latxa_hidden_size, self.llama3_hidden_size)
-            up_weight[:self.llama3_hidden_size, :] = torch.eye(self.llama3_hidden_size)
-            up_weight[self.llama3_hidden_size:, :] = torch.eye(self.llama3_hidden_size)
-            self.up_projection.weight.data = up_weight
+            if self.latxa_hidden_size == self.llama3_hidden_size:
+                # Same size - just use identity
+                self.down_projection.weight.data = torch.eye(self.llama3_hidden_size)
+                self.up_projection.weight.data = torch.eye(self.latxa_hidden_size)
+            elif self.latxa_hidden_size > self.llama3_hidden_size:
+                # Down projection: average pairs of dimensions
+                down_weight = torch.zeros(self.llama3_hidden_size, self.latxa_hidden_size)
+                ratio = self.latxa_hidden_size / self.llama3_hidden_size
+                for i in range(self.llama3_hidden_size):
+                    # Average the corresponding input dimensions
+                    start_idx = int(i * ratio)
+                    end_idx = int((i + 1) * ratio)
+                    for j in range(start_idx, end_idx):
+                        down_weight[i, j] = 1.0 / (end_idx - start_idx)
+                self.down_projection.weight.data = down_weight
+                
+                # Up projection: copy and repeat/pad
+                up_weight = torch.zeros(self.latxa_hidden_size, self.llama3_hidden_size)
+                for i in range(self.latxa_hidden_size):
+                    src_idx = int(i * self.llama3_hidden_size / self.latxa_hidden_size)
+                    up_weight[i, src_idx] = 1.0
+                self.up_projection.weight.data = up_weight
+            else:
+                # latxa_hidden_size < llama3_hidden_size
+                # Down projection: repeat/pad
+                down_weight = torch.zeros(self.llama3_hidden_size, self.latxa_hidden_size)
+                for i in range(self.llama3_hidden_size):
+                    src_idx = int(i * self.latxa_hidden_size / self.llama3_hidden_size)
+                    down_weight[i, src_idx] = 1.0
+                self.down_projection.weight.data = down_weight
+                
+                # Up projection: average
+                up_weight = torch.zeros(self.latxa_hidden_size, self.llama3_hidden_size)
+                ratio = self.llama3_hidden_size / self.latxa_hidden_size
+                for i in range(self.latxa_hidden_size):
+                    start_idx = int(i * ratio)
+                    end_idx = int((i + 1) * ratio)
+                    for j in range(start_idx, end_idx):
+                        up_weight[i, j] = 1.0 / (end_idx - start_idx)
+                self.up_projection.weight.data = up_weight
     
     def project_down(self, latxa_embeds):
         """Project Latxa embeddings (8192) to Llama 3 size (4096)."""
