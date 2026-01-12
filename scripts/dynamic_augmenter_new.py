@@ -19,18 +19,21 @@ import torch.nn as nn
 # ==================== PROJECTION ADAPTER ====================
 class LatxaToLlama3Adapter(nn.Module):
     """
-    Adapter to bridge Latxa (8192 hidden dim) to Llama 3 hypernet (4096 hidden dim).
+    Adapter to bridge Latxa (4096 hidden dim) to Llama 3 hypernet (8192 hidden dim).
     """
-    def __init__(self, latxa_hidden_size=8192, llama3_hidden_size=4096):
+    def __init__(self, latxa_hidden_size=4096, llama3_hidden_size=8192):
         super().__init__()
         self.latxa_hidden_size = latxa_hidden_size
         self.llama3_hidden_size = llama3_hidden_size
         
-        # Project Latxa embeddings DOWN to Llama 3 size (for hypernet input)
-        self.down_projection = nn.Linear(latxa_hidden_size, llama3_hidden_size, bias=False)
+        # Project Latxa embeddings UP to Llama 3 size (for hypernet input)
+        self.up_projection = nn.Linear(latxa_hidden_size, llama3_hidden_size, bias=False)
         
-        # Project Llama 3 embeddings UP to Latxa size (for hypernet output)
-        self.up_projection = nn.Linear(llama3_hidden_size, latxa_hidden_size, bias=False)
+        # Project Llama 3 embeddings DOWN to Latxa size (for hypernet output)
+        self.down_projection = nn.Linear(llama3_hidden_size, latxa_hidden_size, bias=False)
+        
+        # Initialize projections
+        self._initialize_projections()
         
         # Initialize projections
         self._initialize_projections()
@@ -40,52 +43,50 @@ class LatxaToLlama3Adapter(nn.Module):
         with torch.no_grad():
             if self.latxa_hidden_size == self.llama3_hidden_size:
                 # Same size - just use identity
-                self.down_projection.weight.data = torch.eye(self.llama3_hidden_size)
-                self.up_projection.weight.data = torch.eye(self.latxa_hidden_size)
-            elif self.latxa_hidden_size > self.llama3_hidden_size:
-                # Down projection: average pairs of dimensions
+                self.up_projection.weight.data = torch.eye(self.llama3_hidden_size)
+                self.down_projection.weight.data = torch.eye(self.latxa_hidden_size)
+            elif self.latxa_hidden_size < self.llama3_hidden_size:
+                # Up projection: repeat/pad Latxa (4096) -> Llama3 (8192)
+                up_weight = torch.zeros(self.llama3_hidden_size, self.latxa_hidden_size)
+                # Copy first half
+                up_weight[:self.latxa_hidden_size, :] = torch.eye(self.latxa_hidden_size)
+                # Copy to second half
+                up_weight[self.latxa_hidden_size:, :] = torch.eye(self.latxa_hidden_size)
+                self.up_projection.weight.data = up_weight
+                
+                # Down projection: average Llama3 (8192) -> Latxa (4096)
+                down_weight = torch.zeros(self.latxa_hidden_size, self.llama3_hidden_size)
+                for i in range(self.latxa_hidden_size):
+                    # Average two dimensions
+                    down_weight[i, 2*i] = 0.5
+                    down_weight[i, 2*i + 1] = 0.5
+                self.down_projection.weight.data = down_weight
+            else:
+                # latxa_hidden_size > llama3_hidden_size (shouldn't happen now)
+                # Down projection: average dimensions
                 down_weight = torch.zeros(self.llama3_hidden_size, self.latxa_hidden_size)
                 ratio = self.latxa_hidden_size / self.llama3_hidden_size
                 for i in range(self.llama3_hidden_size):
-                    # Average the corresponding input dimensions
                     start_idx = int(i * ratio)
                     end_idx = int((i + 1) * ratio)
                     for j in range(start_idx, end_idx):
                         down_weight[i, j] = 1.0 / (end_idx - start_idx)
                 self.down_projection.weight.data = down_weight
                 
-                # Up projection: copy and repeat/pad
+                # Up projection: copy and repeat
                 up_weight = torch.zeros(self.latxa_hidden_size, self.llama3_hidden_size)
                 for i in range(self.latxa_hidden_size):
                     src_idx = int(i * self.llama3_hidden_size / self.latxa_hidden_size)
                     up_weight[i, src_idx] = 1.0
                 self.up_projection.weight.data = up_weight
-            else:
-                # latxa_hidden_size < llama3_hidden_size
-                # Down projection: repeat/pad
-                down_weight = torch.zeros(self.llama3_hidden_size, self.latxa_hidden_size)
-                for i in range(self.llama3_hidden_size):
-                    src_idx = int(i * self.latxa_hidden_size / self.llama3_hidden_size)
-                    down_weight[i, src_idx] = 1.0
-                self.down_projection.weight.data = down_weight
-                
-                # Up projection: average
-                up_weight = torch.zeros(self.latxa_hidden_size, self.llama3_hidden_size)
-                ratio = self.llama3_hidden_size / self.latxa_hidden_size
-                for i in range(self.latxa_hidden_size):
-                    start_idx = int(i * ratio)
-                    end_idx = int((i + 1) * ratio)
-                    for j in range(start_idx, end_idx):
-                        up_weight[i, j] = 1.0 / (end_idx - start_idx)
-                self.up_projection.weight.data = up_weight
     
-    def project_down(self, latxa_embeds):
-        """Project Latxa embeddings (8192) to Llama 3 size (4096)."""
-        return self.down_projection(latxa_embeds)
+    def project_to_llama3(self, latxa_embeds):
+        """Project Latxa embeddings (4096) to Llama 3 size (8192)."""
+        return self.up_projection(latxa_embeds)
     
-    def project_up(self, llama3_embeds):
-        """Project Llama 3 embeddings (4096) to Latxa size (8192)."""
-        return self.up_projection(llama3_embeds)
+    def project_to_latxa(self, llama3_embeds):
+        """Project Llama 3 embeddings (8192) to Latxa size (4096)."""
+        return self.down_projection(llama3_embeds)
     
     def save(self, path):
         """Save adapter weights."""
@@ -129,14 +130,14 @@ class DynamicAugmenter:
         
         # Get actual hidden sizes from the embeddings (not config)
         actual_embed_size = model.get_input_embeddings().weight.shape[1]
-        latxa_hidden_size = actual_embed_size  # This is the real embedding size
+        latxa_hidden_size = actual_embed_size  # This is the real embedding size (4096)
         
-        # Llama 3 8B has hidden_size 4096
-        llama3_hidden_size = 4096
+        # Llama 3 8B hypernet expects 8192 dimensions
+        llama3_hidden_size = 8192
         
         print(f"Latxa actual embedding size: {latxa_hidden_size}")
         print(f"Latxa config hidden size: {model.config.hidden_size}")
-        print(f"Llama 3 hidden size: {llama3_hidden_size}")
+        print(f"Llama 3 hypernet expected size: {llama3_hidden_size}")
         
         self.adapter = LatxaToLlama3Adapter(
             latxa_hidden_size=latxa_hidden_size,
@@ -196,28 +197,28 @@ class DynamicAugmenter:
         print(f"DEBUG: surfaces shape: {surfaces.shape}")
 
         with torch.no_grad():
-            # ==================== PROJECT DOWN ====================
-            # Project source embeddings from potentially different size to 4096 for hypernet
-            source_embeddings_projected = self.adapter.project_down(source_embeddings)
-            # source_embeddings_projected shape: [vocab_size, llama3_hidden_size]
+            # ==================== PROJECT UP ====================
+            # Project source embeddings from 4096 -> 8192 for hypernet
+            source_embeddings_projected = self.adapter.project_to_llama3(source_embeddings)
+            # source_embeddings_projected shape: [vocab_size, 8192]
             
             print(f"DEBUG: source_embeddings_projected shape: {source_embeddings_projected.shape}")
             
             # ==================== RUN HYPERNET ====================
-            # Now hypernet receives correct-sized embeddings
+            # Now hypernet receives 8192-dim embeddings (correct size)
             pred_in_llama3, pred_out_llama3, _ = self.hypernet(
                 surfaces,
                 source_embeddings=source_embeddings_projected
             )
-            # pred_in_llama3 shape: [batch, 4096]
-            # pred_out_llama3 shape: [batch, 4096]
+            # pred_in_llama3 shape: [batch, 8192]
+            # pred_out_llama3 shape: [batch, 8192]
             
-            # ==================== PROJECT UP ====================
-            # Project predictions back to Latxa size: 4096 -> 8192
-            pred_in = self.adapter.project_up(pred_in_llama3)
-            pred_out = self.adapter.project_up(pred_out_llama3)
-            # pred_in shape: [batch, 8192]
-            # pred_out shape: [batch, 8192]
+            # ==================== PROJECT DOWN ====================
+            # Project predictions back to Latxa size: 8192 -> 4096
+            pred_in = self.adapter.project_to_latxa(pred_in_llama3)
+            pred_out = self.adapter.project_to_latxa(pred_out_llama3)
+            # pred_in shape: [batch, 4096]
+            # pred_out shape: [batch, 4096]
 
         # Return CPU tensors
         result = {}

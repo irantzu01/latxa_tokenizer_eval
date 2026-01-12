@@ -20,7 +20,7 @@ from evaluation_helper_functions import (
 )
 
 from tokenizations.dynamic_bpe import Dynamic_BPE
-from dynamic_augmenter import DynamicAugmenter
+from dynamic_augmenter_new import DynamicAugmenter
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel
 import torch
 from datasets import load_dataset
