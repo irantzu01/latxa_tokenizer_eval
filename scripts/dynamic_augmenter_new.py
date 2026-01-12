@@ -179,88 +179,50 @@ class DynamicAugmenter:
     def _predict_embeddings_for_tokens(self, tokens_list):
         """
         Predict embeddings for dynamic tokens using Zett hypernetwork.
-        Uses Latxa's embeddings (projected) as source context for the hypernet.
+        Follows the exact approach from the Zett paper.
         Returns dict[token] -> (in_emb, out_emb) on CPU.
         """
 
-        # Convert tokens to char strings
-        char_tokens = expand_to_char_tokens(tokens_list)
-        char_strings = ["".join(chars) for chars in char_tokens]
-
-        # Build surface form matrix using hypernet's tokenizer
+        # Build surface form matrix - pass the tokens directly as they expect
+        # tokens_list is already a list of token strings
         surfaces = get_surface_form_matrix(
-            char_strings,
+            [tokens_list],  # Wrap in list as they expect batch format
             maxlen=self.hypernet.config.hn_surface_maxlen,
             tokenizer_to_use=self.hypernet_tokenizer
         )
 
-        # Unpack tuple if needed
+        # Unpack tuple - get_surface_form_matrix returns (surfaces, ...)
         if isinstance(surfaces, tuple):
             surfaces = surfaces[0]
 
         # Convert to tensor on device
-        surfaces = torch.tensor(surfaces, dtype=torch.long, device=self.device)
+        surfaces = torch.from_numpy(surfaces).to(self.device)
 
-        # ==================== BUILD ALIGNED SOURCE EMBEDDINGS ====================
-        # Per Zett paper: concatenate input + output embeddings
-        # This is why we get 8192 (4096 + 4096)
-        
-        # Get Latxa embeddings
-        latxa_in_embeddings = self.model.get_input_embeddings().weight  # [32000, 4096]
-        latxa_out_embeddings = self.model.get_output_embeddings().weight  # [32000, 4096]
-        
-        # Concatenate input and output embeddings
-        latxa_concat_embeddings = torch.cat([
-            latxa_in_embeddings,
-            latxa_out_embeddings
-        ], dim=1)  # [32000, 8192]
-        
-        # Get hypernet vocab size
-        hypernet_vocab_size = self.hypernet_tokenizer.vocab_size
-        
-        # Create aligned embedding matrix for hypernet's vocab
-        # This should be [hypernet_vocab_size, 8192] (4096 in + 4096 out)
-        aligned_embeddings = torch.zeros(
-            hypernet_vocab_size, 
-            8192,  # Always 8192 = concat of in (4096) + out (4096)
-            dtype=latxa_concat_embeddings.dtype,
-            device=self.device
-        )
-        
-        # Map overlapping tokens from Latxa to Llama3 vocab
-        for token, latxa_id in self.vocab.items():
-            if token in self.hypernet_tokenizer.get_vocab():
-                llama3_id = self.hypernet_tokenizer.get_vocab()[token]
-                if llama3_id < hypernet_vocab_size:
-                    # Use concatenated embedding directly (no projection needed here)
-                    aligned_embeddings[llama3_id] = latxa_concat_embeddings[latxa_id]
-        
-        # For unmapped tokens, use small random values
-        unmapped_mask = (aligned_embeddings.sum(dim=1) == 0)
-        if unmapped_mask.any():
-            aligned_embeddings[unmapped_mask] = torch.randn(
-                unmapped_mask.sum(), 8192,
-                dtype=aligned_embeddings.dtype,
-                device=self.device
-            ) * 0.02
+        # ==================== BUILD SOURCE EMBEDDINGS ====================
+        # Concatenate input + output embeddings as per Zett paper
+        src_emb = torch.cat([
+            self.model.get_input_embeddings().weight.data,  # [vocab, 4096]
+            self.model.get_output_embeddings().weight.data,  # [vocab, 4096]
+        ], dim=1).to(self.device)  # [vocab, 8192]
 
         with torch.no_grad():
             try:
-                # Call hypernet with concatenated source embeddings
+                # Predict embeddings using hypernet
                 pred_in, pred_out, _ = self.hypernet(
                     surfaces,
-                    source_embeddings=aligned_embeddings
+                    source_embeddings=src_emb
                 )
                 # pred_in: [batch, 4096] - input embeddings
                 # pred_out: [batch, 4096] - output embeddings
             except RuntimeError as e:
                 print(f"ERROR in hypernet call:")
                 print(f"  surfaces shape: {surfaces.shape}")
-                print(f"  aligned_embeddings shape: {aligned_embeddings.shape}")
+                print(f"  src_emb shape: {src_emb.shape}")
+                print(f"  surfaces dtype: {surfaces.dtype}, device: {surfaces.device}")
                 print(f"  surfaces min/max: {surfaces.min()}/{surfaces.max()}")
                 raise e
 
-        # Return CPU tensors
+        # Return CPU tensors as dict
         result = {}
         for i, tok in enumerate(tokens_list):
             result[tok] = (
