@@ -183,10 +183,14 @@ class DynamicAugmenter:
         Returns dict[token] -> (in_emb, out_emb) on CPU.
         """
 
-        # Build surface form matrix - pass the tokens directly as they expect
-        # tokens_list is already a list of token strings
+        # Debug: check what tokens we're getting
+        print(f"DEBUG: Predicting embeddings for {len(tokens_list)} tokens")
+        print(f"DEBUG: Sample tokens: {tokens_list[:5]}")
+        
+        # get_surface_form_matrix expects tokens in byte format (e.g., 'Ġhello')
+        # Make sure tokens are properly formatted
         surfaces = get_surface_form_matrix(
-            [tokens_list],  # Wrap in list as they expect batch format
+            tokens_list,  # Direct list of tokens
             maxlen=self.hypernet.config.hn_surface_maxlen,
             tokenizer_to_use=self.hypernet_tokenizer
         )
@@ -220,6 +224,7 @@ class DynamicAugmenter:
                 print(f"  src_emb shape: {src_emb.shape}")
                 print(f"  surfaces dtype: {surfaces.dtype}, device: {surfaces.device}")
                 print(f"  surfaces min/max: {surfaces.min()}/{surfaces.max()}")
+                print(f"  tokens_list sample: {tokens_list[:5]}")
                 raise e
 
         # Return CPU tensors as dict
