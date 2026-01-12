@@ -13,93 +13,9 @@ import torch
 from zett.utils import get_surface_form_matrix
 import torch
 import numpy as np
-import torch.nn as nn
 
 
-# ==================== PROJECTION ADAPTER ====================
-class LatxaToLlama3Adapter(nn.Module):
-    """
-    Adapter to bridge Latxa (8192 hidden dim) to Llama 3 hypernet (4096 hidden dim).
-    """
-    def __init__(self, latxa_hidden_size=8192, llama3_hidden_size=4096):
-        super().__init__()
-        self.latxa_hidden_size = latxa_hidden_size
-        self.llama3_hidden_size = llama3_hidden_size
-        
-        # Project Latxa embeddings DOWN to Llama 3 size (for hypernet input)
-        self.down_projection = nn.Linear(latxa_hidden_size, llama3_hidden_size, bias=False)
-        
-        # Project Llama 3 embeddings UP to Latxa size (for hypernet output)
-        self.up_projection = nn.Linear(llama3_hidden_size, latxa_hidden_size, bias=False)
-        
-        # Initialize projections
-        self._initialize_projections()
-    
-    def _initialize_projections(self):
-        """Initialize projections intelligently."""
-        with torch.no_grad():
-            if self.latxa_hidden_size == self.llama3_hidden_size:
-                # Same size - just use identity
-                self.down_projection.weight.data = torch.eye(self.llama3_hidden_size)
-                self.up_projection.weight.data = torch.eye(self.latxa_hidden_size)
-            elif self.latxa_hidden_size > self.llama3_hidden_size:
-                # Down projection: average pairs of dimensions
-                down_weight = torch.zeros(self.llama3_hidden_size, self.latxa_hidden_size)
-                ratio = self.latxa_hidden_size / self.llama3_hidden_size
-                for i in range(self.llama3_hidden_size):
-                    # Average the corresponding input dimensions
-                    start_idx = int(i * ratio)
-                    end_idx = int((i + 1) * ratio)
-                    for j in range(start_idx, end_idx):
-                        down_weight[i, j] = 1.0 / (end_idx - start_idx)
-                self.down_projection.weight.data = down_weight
-                
-                # Up projection: copy and repeat/pad
-                up_weight = torch.zeros(self.latxa_hidden_size, self.llama3_hidden_size)
-                for i in range(self.latxa_hidden_size):
-                    src_idx = int(i * self.llama3_hidden_size / self.latxa_hidden_size)
-                    up_weight[i, src_idx] = 1.0
-                self.up_projection.weight.data = up_weight
-            else:
-                # latxa_hidden_size < llama3_hidden_size
-                # Down projection: repeat/pad
-                down_weight = torch.zeros(self.llama3_hidden_size, self.latxa_hidden_size)
-                for i in range(self.llama3_hidden_size):
-                    src_idx = int(i * self.latxa_hidden_size / self.llama3_hidden_size)
-                    down_weight[i, src_idx] = 1.0
-                self.down_projection.weight.data = down_weight
-                
-                # Up projection: average
-                up_weight = torch.zeros(self.latxa_hidden_size, self.llama3_hidden_size)
-                ratio = self.llama3_hidden_size / self.latxa_hidden_size
-                for i in range(self.latxa_hidden_size):
-                    start_idx = int(i * ratio)
-                    end_idx = int((i + 1) * ratio)
-                    for j in range(start_idx, end_idx):
-                        up_weight[i, j] = 1.0 / (end_idx - start_idx)
-                self.up_projection.weight.data = up_weight
-    
-    def project_down(self, latxa_embeds):
-        """Project Latxa embeddings (8192) to Llama 3 size (4096)."""
-        return self.down_projection(latxa_embeds)
-    
-    def project_up(self, llama3_embeds):
-        """Project Llama 3 embeddings (4096) to Latxa size (8192)."""
-        return self.up_projection(llama3_embeds)
-    
-    def save(self, path):
-        """Save adapter weights."""
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        torch.save(self.state_dict(), path)
-        print(f"Adapter saved to {path}")
-    
-    def load(self, path):
-        """Load adapter weights."""
-        self.load_state_dict(torch.load(path, map_location='cpu'))
-        print(f"Adapter loaded from {path}")
 
-
-# ==================== DYNAMIC AUGMENTER ====================
 class DynamicAugmenter:
     """
     Runtime augmenter that:
@@ -110,7 +26,7 @@ class DynamicAugmenter:
     """
 
     def __init__(self, model, latxa_tokenizer, hypernet, hypernet_tokenizer,
-                 cache_limit=50000, device=None, adapter_path=None):
+                 cache_limit=50000, device=None):
         self.device = device if device is not None else torch.device("cpu")
         self.model = model.to(device)
         self.latxa_tokenizer = latxa_tokenizer
@@ -123,39 +39,6 @@ class DynamicAugmenter:
         self.cache_embeddings = {}   # token_str -> (in_emb_tensor, out_emb_tensor)
         self.cache_limit = cache_limit
         self.current_vocab_size = self.base_vocab_size
-        
-        # ==================== INITIALIZE ADAPTER ====================
-        print("Initializing Latxa-to-Llama3 projection adapter...")
-        
-        # Get actual hidden sizes from the embeddings (not config)
-        actual_embed_size = model.get_input_embeddings().weight.shape[1]
-        latxa_hidden_size = actual_embed_size  # This is the real embedding size
-        
-        # Llama 3 8B has hidden_size 4096
-        llama3_hidden_size = 4096
-        
-        print(f"Latxa actual embedding size: {latxa_hidden_size}")
-        print(f"Latxa config hidden size: {model.config.hidden_size}")
-        print(f"Llama 3 hidden size: {llama3_hidden_size}")
-        
-        self.adapter = LatxaToLlama3Adapter(
-            latxa_hidden_size=latxa_hidden_size,
-            llama3_hidden_size=llama3_hidden_size
-        ).to(self.device)
-        
-        # Try to load pretrained adapter if provided or exists
-        if adapter_path and os.path.exists(adapter_path):
-            print(f"Loading pretrained adapter from {adapter_path}")
-            self.adapter.load(adapter_path)
-        else:
-            default_path = "models/latxa_llama3_adapter.pt"
-            if os.path.exists(default_path):
-                print(f"Loading pretrained adapter from {default_path}")
-                self.adapter.load(default_path)
-            else:
-                print("No pretrained adapter found, using initialized projections")
-        
-        self.adapter.eval()  # Set to eval mode
 
     def _ensure_capacity(self, n_new):
         """Resize model embeddings to accomodate n_new new ids."""
@@ -167,7 +50,6 @@ class DynamicAugmenter:
     def _predict_embeddings_for_tokens(self, tokens_list):
         """
         Predict embeddings for dynamic tokens using Zett hypernetwork.
-        Uses projection adapter to handle dimension mismatch.
         Returns dict[token] -> (in_emb, out_emb) on CPU.
         """
 
@@ -189,35 +71,14 @@ class DynamicAugmenter:
         # Convert to tensor on device
         surfaces = torch.tensor(surfaces, dtype=torch.long, device=self.device)
 
-        # Get source embeddings from Latxa (should be [vocab_size, 4096])
+        # ✅ THIS is the correct source embedding matrix
         source_embeddings = self.model.get_input_embeddings().weight
-        
-        print(f"DEBUG: source_embeddings shape: {source_embeddings.shape}")
-        print(f"DEBUG: surfaces shape: {surfaces.shape}")
 
         with torch.no_grad():
-            # ==================== PROJECT DOWN ====================
-            # Project source embeddings from potentially different size to 4096 for hypernet
-            source_embeddings_projected = self.adapter.project_down(source_embeddings)
-            # source_embeddings_projected shape: [vocab_size, llama3_hidden_size]
-            
-            print(f"DEBUG: source_embeddings_projected shape: {source_embeddings_projected.shape}")
-            
-            # ==================== RUN HYPERNET ====================
-            # Now hypernet receives correct-sized embeddings
-            pred_in_llama3, pred_out_llama3, _ = self.hypernet(
+            pred_in, pred_out, _ = self.hypernet(
                 surfaces,
-                source_embeddings=source_embeddings_projected
+                source_embeddings=source_embeddings
             )
-            # pred_in_llama3 shape: [batch, 4096]
-            # pred_out_llama3 shape: [batch, 4096]
-            
-            # ==================== PROJECT UP ====================
-            # Project predictions back to Latxa size: 4096 -> 8192
-            pred_in = self.adapter.project_up(pred_in_llama3)
-            pred_out = self.adapter.project_up(pred_out_llama3)
-            # pred_in shape: [batch, 8192]
-            # pred_out shape: [batch, 8192]
 
         # Return CPU tensors
         result = {}
@@ -228,6 +89,7 @@ class DynamicAugmenter:
             )
 
         return result
+
 
     def add_and_assign_new_tokens(self, new_token_strs):
         """Add new dynamic tokens to cache, predict embeddings, and assign IDs."""
@@ -282,13 +144,9 @@ class DynamicAugmenter:
             ids = [self.vocab.get(normalize_dynamic_token(t), self.cache[t]) for t in seq]
             out_ids.append(ids)
         return out_ids
-    
-    def save_adapter(self, path="models/latxa_llama3_adapter.pt"):
-        """Save the adapter for reuse."""
-        self.adapter.save(path)
 
 
-# ==================== HELPER FUNCTIONS ====================
+# Helper functions
 def normalize_dynamic_token(tok: str) -> str:
     tok = tok.replace("Ġ", "").replace("▁", "").replace("<s>", "").replace("</s>", "").strip()
     if tok == "":
@@ -297,76 +155,3 @@ def normalize_dynamic_token(tok: str) -> str:
 
 def expand_to_char_tokens(tokens):
     return [list(normalize_dynamic_token(t)) for t in tokens]
-
-
-# ==================== OPTIONAL: TRAIN ADAPTER ====================
-def train_adapter(augmenter, num_tokens=1000, learning_rate=1e-4, num_epochs=10):
-    """
-    Optional: Train the adapter to better align Latxa and Llama 3 embedding spaces.
-    
-    This trains the projection layers by:
-    1. Taking existing Latxa token embeddings
-    2. Projecting them through adapter + hypernet
-    3. Comparing predicted embeddings with actual Latxa embeddings
-    4. Minimizing the reconstruction error
-    """
-    import random
-    from tqdm import tqdm
-    
-    print(f"\nTraining adapter to align embedding spaces...")
-    print(f"Using {num_tokens} random tokens for {num_epochs} epochs")
-    
-    augmenter.adapter.train()
-    optimizer = torch.optim.Adam(augmenter.adapter.parameters(), lr=learning_rate)
-    
-    # Get Latxa embeddings
-    latxa_in_embeds = augmenter.model.get_input_embeddings().weight.data
-    latxa_out_embeds = augmenter.model.get_output_embeddings().weight.data
-    
-    # Sample random tokens
-    vocab_size = latxa_in_embeds.shape[0]
-    token_indices = random.sample(range(min(vocab_size, augmenter.base_vocab_size)), 
-                                  min(num_tokens, vocab_size))
-    
-    for epoch in range(num_epochs):
-        total_loss = 0
-        
-        for idx in tqdm(token_indices, desc=f"Epoch {epoch+1}/{num_epochs}"):
-            optimizer.zero_grad()
-            
-            # Get actual embeddings
-            true_in_embed = latxa_in_embeds[idx].unsqueeze(0)  # [1, 8192]
-            true_out_embed = latxa_out_embeds[idx].unsqueeze(0)  # [1, 8192]
-            
-            # Project down
-            projected = augmenter.adapter.project_down(true_in_embed)
-            
-            # Simulate what hypernet would do (just identity for training)
-            # In real usage, hypernet transforms these, but for adapter training
-            # we just want to minimize round-trip error
-            pred_llama3 = projected  # [1, 4096]
-            
-            # Project back up
-            pred_in = augmenter.adapter.project_up(pred_llama3)
-            pred_out = augmenter.adapter.project_up(projected)
-            
-            # Compute loss (MSE between predicted and true embeddings)
-            loss_in = nn.functional.mse_loss(pred_in, true_in_embed)
-            loss_out = nn.functional.mse_loss(pred_out, true_out_embed)
-            loss = loss_in + loss_out
-            
-            loss.backward()
-            optimizer.step()
-            
-            total_loss += loss.item()
-        
-        avg_loss = total_loss / len(token_indices)
-        print(f"Epoch {epoch+1} - Average Loss: {avg_loss:.6f}")
-    
-    augmenter.adapter.eval()
-    print("✓ Adapter training complete!")
-    
-    # Save trained adapter
-    augmenter.save_adapter()
-    
-    return augmenter
