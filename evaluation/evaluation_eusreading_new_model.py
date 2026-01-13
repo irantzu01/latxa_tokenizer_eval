@@ -20,8 +20,8 @@ import random
 
 # ==================== CONFIGURATION ====================
 # Change these paths to evaluate different models
-MODEL_PATH = os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_100k_improved/final")
-MODEL_NAME = "100k_improved"  # Used in output filenames
+MODEL_PATH = os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k/final")
+MODEL_NAME = "250k_improved"  # Used in output filenames
 
 # Alternative models to test:
 # MODEL_PATH = os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_100k_improved/checkpoint-epoch2")
