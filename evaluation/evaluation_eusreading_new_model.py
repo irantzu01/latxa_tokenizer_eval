@@ -20,7 +20,7 @@ import random
 
 # ==================== CONFIGURATION ====================
 # Change these paths to evaluate different models
-MODEL_PATH = os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k/final")
+MODEL_PATH = os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_100k_improved/final")
 MODEL_NAME = "100k_improved"  # Used in output filenames
 
 # Alternative models to test:
@@ -165,6 +165,28 @@ results_path = f"cache/eusreading_{MODEL_NAME}_eval_results.jsonl"
 print(f"\nEvaluating model...")
 print(f"Results will be saved to: {results_path}")
 
+# Helper function to score one choice at a time (avoid OOM)
+@torch.no_grad()
+def score_single_choice(model, input_ids, attention_mask, device):
+    """Score a single choice sequence to avoid OOM."""
+    input_ids = input_ids.unsqueeze(0).to(device)  # [1, seq_len]
+    attention_mask = attention_mask.unsqueeze(0).to(device)  # [1, seq_len]
+    
+    outputs = model(
+        input_ids=input_ids,
+        attention_mask=attention_mask
+    )
+    logits = outputs.logits
+    log_probs = torch.log_softmax(logits[:, :-1], dim=-1)
+    targets = input_ids[:, 1:]
+    
+    score = 0.0
+    for t in range(targets.size(1)):
+        if attention_mask[0, t + 1]:
+            score += log_probs[0, t, targets[0, t]].item()
+    
+    return score
+
 with open(cache_file) as fin, \
      open(results_path, "w") as fout:
 
@@ -200,12 +222,21 @@ with open(cache_file) as fin, \
 
             full_ids.append(prompt_ids + choice_ids)
 
-        # ----- Batch + score -----
-        input_ids, attention_mask = build_batch_tensors(
-            full_ids, pad_id, device
-        )
-
-        scores = score_choices(model, input_ids, attention_mask)
+        # ----- Score each choice individually to avoid OOM -----
+        scores_list = []
+        for seq_ids in full_ids:
+            # Convert to tensor
+            input_ids_tensor = torch.tensor(seq_ids, dtype=torch.long)
+            attention_mask_tensor = torch.ones_like(input_ids_tensor)
+            
+            # Score this choice
+            score = score_single_choice(model, input_ids_tensor, attention_mask_tensor, device)
+            scores_list.append(score)
+            
+            # Clear cache after each choice
+            torch.cuda.empty_cache()
+        
+        scores = torch.tensor(scores_list)
         pred = torch.argmax(scores).item()
         is_correct = (pred == item["gold"])
 
