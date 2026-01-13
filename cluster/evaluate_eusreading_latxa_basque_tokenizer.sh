@@ -1,0 +1,35 @@
+#!/bin/bash
+#SBATCH --job-name=latxa-test
+#SBATCH --output=logs/train/train_%A_%a.log
+#SBATCH --error=logs/train/train_%A_%a.err
+#SBATCH -n 1
+#SBATCH -c 8
+#SBATCH --gres=gpu:A100:1
+#SBATCH --time=48:00:00
+#SBATCH --partition=react
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH -C inet
+
+echo "Starting job $SLURM_JOB_ID on node $(hostname)"
+
+# === 1. LOAD MODULES (MAY VARY BY CLUSTER) ===
+module purge
+module load gcc/13.2.0
+module load python/3.11.9
+
+# === 2. ACTIVATE YOUR VIRTUAL ENVIRONMENT ===
+source ~/MASTER/WiSe25/Lab\ Rotation/dynamic-tokenization/venv311/bin/activate
+
+echo "Environment loaded."
+python --version
+pip list | grep transformers
+
+# === 3. MOVE TO PROJECT DIRECTORY ===
+cd ~/MASTER/WiSe25/Lab\ Rotation/latxa_tokenizer_eval
+
+echo "Running python experiment..."
+
+# === 4. RUN YOUR PYTHON SCRIPT ===
+python evaluation/evaluate_eus_reading.py --model latxa_basque_tokenizer --shots 5
+
+echo "Job finished."
