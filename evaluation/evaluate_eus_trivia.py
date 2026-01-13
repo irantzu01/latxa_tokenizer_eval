@@ -49,8 +49,8 @@ MODELS = {
         "description": "Latxa 7B + Basque Tokenizer (250k)"
     },
     "latxa_basque_focus": {
-        "path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_focus/final"),
-        "tokenizer_path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_focus/final"),
+        "path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_FOCUS/final"),
+        "tokenizer_path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_FOCUS/final"),
         "use_dynamic": False,
         "description": "Latxa 7B + Basque Tokenizer + FOCUS"
     },
