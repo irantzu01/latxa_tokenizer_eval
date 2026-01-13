@@ -1,30 +1,18 @@
 #!/usr/bin/env python3
-"""
-Lexical realignment for Latxa 7B using a new Basque tokenizer.
-100K dataset - Improved version
 
-- Freezes all middle layers
-- Trains ALL embeddings (not just new tokens) and LM head
-- Better initialization, higher learning rate, cosine scheduler
-"""
-
-# ================== 0️⃣ Imports ==================
 import os
 import sys
 import torch
 import shutil
 from torch.utils.data import IterableDataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
-from transformers import (
-    AutoTokenizer,
-    AutoModelForCausalLM,
-    AdamW,
-    get_scheduler
-)
+from transformers import (AutoTokenizer, AutoModelForCausalLM, AdamW, get_scheduler)
 from tqdm import tqdm
 import math
+from focus_initialization import initialize_embeddings_with_focus
 
-# ================== 1️⃣ Settings ==================
+
+# ================ Settings ==================
 model_name = "HiTZ/latxa-7b-v1.2"
 tokenizer_dir = "basque_tokenizer_hf"
 
@@ -46,7 +34,7 @@ gradient_accumulation_steps = 4     # Reduced since batch_size is higher (effect
 learning_rate = 5e-4                # Increased from 1e-4 for better embedding learning
 epochs = 3
 max_length = 1024
-save_dir = os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k")
+save_dir = os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_FOCUS")
 corpus_file = "data/basque_corpus_sampled_250k.txt"
 val_fraction = 0.01                  # Fraction of corpus for validation
 max_steps_per_epoch = None           # Set to a number to limit steps per epoch (e.g., 10000)
@@ -54,25 +42,13 @@ save_total_limit = 1                 # Keep only the N most recent checkpoints (
 
 os.makedirs(save_dir, exist_ok=True)
 
-print(f"\n{'='*60}")
-print(f"Training Configuration")
-print(f"{'='*60}")
-print(f"Corpus file: {corpus_file}")
-print(f"Output directory: {save_dir}")
-print(f"Batch size: {batch_size}")
-print(f"Gradient accumulation: {gradient_accumulation_steps}")
-print(f"Effective batch size: {batch_size * gradient_accumulation_steps}")
-print(f"Learning rate: {learning_rate}")
-print(f"{'='*60}\n")
-
-# ================== 2️⃣ Load tokenizer ==================
+# ================ Load tokenizer ==================
 print("Loading tokenizer...")
 tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, use_fast=True)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
-    print(f"Pad token set to: {tokenizer.pad_token} ({tokenizer.pad_token_id})")
 
-# ================== 3️⃣ Load Latxa model ==================
+# ================ Load Latxa model ==================
 print("Loading Latxa 7B model...")
 model = AutoModelForCausalLM.from_pretrained(
     model_name, 
@@ -81,7 +57,7 @@ model = AutoModelForCausalLM.from_pretrained(
     torch_dtype=torch.bfloat16  # Use bfloat16 for better memory efficiency
 )
 
-# ================== 4️⃣ Embed alignment ==================
+# ================ Embed alignment ==================
 print("Aligning embeddings with Basque tokenizer...")
 latxa_tokenizer = AutoTokenizer.from_pretrained(model_name)
 latxa_vocab = latxa_tokenizer.get_vocab()
@@ -103,20 +79,15 @@ print(f"New tokens: {len(new_token_ids)} tokens")
 old_embeddings = model.get_input_embeddings()
 model.resize_token_embeddings(len(tokenizer))
 
-# Initialize new embeddings: copy from similar tokens or use mean of existing embeddings
-embedding_weights = model.get_input_embeddings().weight.data
-if len(new_token_ids) > 0:
-    # Calculate mean and std of existing embeddings for better initialization
-    existing_embeddings = embedding_weights[:len(latxa_vocab)]
-    existing_mean = existing_embeddings.mean(dim=0)
-    existing_std = existing_embeddings.std(dim=0).mean().item()
-    
-    print(f"Initializing {len(new_token_ids)} new embeddings with mean from existing tokens")
-    for idx in new_token_ids:
-        # Initialize with small random noise around the mean of existing embeddings
-        # Make sure the random tensor is on the same device as embedding_weights
-        noise = torch.randn(model.config.hidden_size, dtype=embedding_weights.dtype, device=embedding_weights.device)
-        embedding_weights[idx] = existing_mean + noise * (existing_std * 0.1)
+from focus_initialization import initialize_embeddings_with_focus
+
+# Initialize embeddings with FOCUS method
+old_token_ids, new_token_ids = initialize_embeddings_with_focus(
+    model=model,
+    old_tokenizer=latxa_tokenizer,
+    new_tokenizer=tokenizer,
+    device=device
+)
 
 # Freeze all parameters
 for param in model.parameters():
@@ -129,7 +100,7 @@ for param in model.get_output_embeddings().parameters():
 # Unfreeze ALL embeddings (not just new tokens)
 model.get_input_embeddings().weight.requires_grad = True
 
-# OPTION: Uncomment below to freeze old token embeddings (currently disabled for better learning)
+# Freeze old token embeddings
 # if len(old_token_ids) > 0:
 #     old_idx_tensor = torch.tensor(old_token_ids, dtype=torch.long)
 #     def zero_grad_old_tokens(grad):
