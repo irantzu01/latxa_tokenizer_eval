@@ -97,7 +97,7 @@ for param in model.parameters():
 for param in model.get_output_embeddings().parameters():
     param.requires_grad = True
 
-# Unfreeze ALL embeddings (not just new tokens)
+# Unfreeze all embeddings
 model.get_input_embeddings().weight.requires_grad = True
 
 # Freeze old token embeddings
@@ -116,7 +116,7 @@ trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 total_params = sum(p.numel() for p in model.parameters())
 print(f"Trainable parameters: {trainable_params:,} / {total_params:,} ({100*trainable_params/total_params:.2f}%)")
 
-# ================== 5️⃣ Streaming Dataset ==================
+# ================== Streaming Dataset ==================
 class BasqueStreamingDataset(IterableDataset):
     def __init__(self, file_path, tokenizer, max_length=1024, val_fraction=0.01, split="train"):
         self.file_path = file_path
@@ -189,7 +189,7 @@ print(f"\nEstimated steps per epoch: {estimated_steps_per_epoch:,}")
 print(f"Gradient accumulation steps: {gradient_accumulation_steps}")
 print(f"Effective batch size: {batch_size * gradient_accumulation_steps}")
 
-# ================== 6️⃣ Optimizer & Scheduler ==================
+# ================== Optimizer & Scheduler ==================
 optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate)
 
 num_training_steps = epochs * (estimated_steps_per_epoch // gradient_accumulation_steps)
@@ -204,7 +204,7 @@ scheduler = get_scheduler(
     num_training_steps=num_training_steps
 )
 
-# ================== 7️⃣ Validation perplexity ==================
+# ================== Validation perplexity ==================
 @torch.no_grad()
 def evaluate_ppl(model, dataloader, max_batches=100):
     model.eval()
@@ -354,7 +354,7 @@ for epoch in range(epochs):
     cleanup_old_checkpoints(save_dir, save_total_limit, keep_best=True)
     print(f"✓ Old checkpoints cleaned up (keeping last {save_total_limit})")
 
-# ================== 9️⃣ Save final model ==================
+# ================== Save final model ==================
 final_dir = os.path.join(save_dir, "final")
 os.makedirs(final_dir, exist_ok=True)
 model.save_pretrained(final_dir)
@@ -365,7 +365,7 @@ print(f"Final model saved to '{final_dir}'")
 print(f"Best validation perplexity: {best_ppl:.2f}")
 print(f"{'='*50}\n")
 
-# ================== 🔟 Test generation ==================
+# ================== Test generation ==================
 print("Testing generation...")
 model.eval()
 test_sentences = [
