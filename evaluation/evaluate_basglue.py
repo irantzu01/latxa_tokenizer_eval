@@ -24,7 +24,7 @@ sys.path.append(scripts_path)
 
 from evaluation_helper_functions import build_batch_tensors, score_choices
 from tokenizations.dynamic_bpe import Dynamic_BPE
-from dynamic_augmenter_new import DynamicAugmenter
+from scripts.dynamic_augmenter_new import DynamicAugmenter
 
 # ==================== CONFIGURATION ====================
 MODELS = {
@@ -41,14 +41,14 @@ MODELS = {
         "description": "Latxa 7B + Dynamic Tokenization"
     },
     "latxa_basque_tokenizer": {
-        "path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_100k_improved/final"),
-        "tokenizer_path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_100k_improved/final"),
+        "path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k/final"),
+        "tokenizer_path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k/final"),
         "use_dynamic": False,
-        "description": "Latxa 7B + Basque Tokenizer (100k)"
+        "description": "Latxa 7B + Basque Tokenizer (250k)"
     },
     "latxa_basque_focus": {
-        "path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_100k_focus/final"),
-        "tokenizer_path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_100k_focus/final"),
+        "path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_FOCUS/final"),
+        "tokenizer_path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_FOCUS/final"),
         "use_dynamic": False,
         "description": "Latxa 7B + Basque Tokenizer + FOCUS"
     },
