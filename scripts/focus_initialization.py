@@ -222,10 +222,10 @@ class FOCUSInitializer:
         return mean_emb + noise
 
 
-# ==================== USAGE IN YOUR TRAINING SCRIPT ====================
+# ================= Function to call in training script ===================
 def initialize_embeddings_with_focus(model, old_tokenizer, new_tokenizer, device):
     """
-    Replace your current initialization code with this function.
+    Initialize model embeddings using FOCUS strategy.
     
     Args:
         model: The Latxa model
@@ -271,41 +271,3 @@ def initialize_embeddings_with_focus(model, old_tokenizer, new_tokenizer, device
     print(f"  New tokens: {len(new_token_ids):,}")
     
     return old_token_ids, new_token_ids
-
-
-# ==================== EXAMPLE: Replace in your training script ====================
-if __name__ == "__main__":
-    """
-    Example of how to use this in your training script.
-    Replace your current Step 4 (Embed alignment) with this.
-    """
-    from transformers import AutoTokenizer, AutoModelForCausalLM
-    
-    # Load model and tokenizers
-    model_name = "HiTZ/latxa-7b-v1.2"
-    tokenizer_dir = "basque_tokenizer_hf"
-    device = "cuda"
-    
-    model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto")
-    latxa_tokenizer = AutoTokenizer.from_pretrained(model_name)
-    basque_tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir)
-    
-    # Initialize embeddings with FOCUS
-    old_token_ids, new_token_ids = initialize_embeddings_with_focus(
-        model=model,
-        old_tokenizer=latxa_tokenizer,
-        new_tokenizer=basque_tokenizer,
-        device=device
-    )
-    
-    # Continue with freezing/unfreezing as before
-    # Freeze all parameters
-    for param in model.parameters():
-        param.requires_grad = False
-    
-    # Unfreeze LM head and embeddings
-    for param in model.get_output_embeddings().parameters():
-        param.requires_grad = True
-    model.get_input_embeddings().weight.requires_grad = True
-    
-    print("\n✓ Ready for training!")
