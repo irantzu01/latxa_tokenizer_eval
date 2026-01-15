@@ -58,11 +58,26 @@ MODELS = {
 }
 
 # Load configs for EusExams
-print("Loading the configs from json file...")
-with open("eus_exams_configs_eu.json", "r") as f:
-    configs = json.load(f)
-
-CONFIGS = configs["configs"]
+configs_file = "eus_exams_configs_eu.json"
+if os.path.exists(configs_file):
+    print("Loading the configs from json file...")
+    with open(configs_file, "r") as f:
+        configs = json.load(f)
+    CONFIGS = configs["configs"]
+else:
+    # Default configs - Basque (eu) exams
+    print("Config file not found, using default EusExams configs...")
+    CONFIGS = [
+        "eu_ejadministrari", "eu_ejlaguntza", "eu_ejlaguntzaile", "eu_ejteknikari",
+        "eu_opebilbaoeu", "eu_opeehuadmineu", "eu_opeehuauxeu", "eu_opeehubiblioeu",
+        "eu_opeehuderechoeu", "eu_opeehueconomicaseu", "eu_opeehuempresarialeseu",
+        "eu_opeehusubalternoeu", "eu_opeehutecnicoeu", "eu_opeehuteknikarib",
+        "eu_opegasteizkoudala", "eu_opeosakiadmineu", "eu_opeosakiauxenfeu",
+        "eu_opeosakiauxeu", "eu_opeosakiceladoreu", "eu_opeosakienfeu",
+        "eu_opeosakioperarioeu", "eu_opeosakitecnicoeu", "eu_opeosakivarioseu",
+        "eu_osakidetza1e", "eu_osakidetza2e", "eu_osakidetza3e", "eu_osakidetza5e",
+        "eu_osakidetza6e", "eu_osakidetza7e"
+    ]
 
 seed = 42
 random.seed(seed)
