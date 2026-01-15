@@ -23,7 +23,7 @@ sys.path.append(scripts_path)
 
 from evaluation_helper_functions import build_batch_tensors, score_choices
 from tokenizations.dynamic_bpe import Dynamic_BPE
-from dynamic_augmenter_new import DynamicAugmenter
+from scripts.dynamic_augmenter_new import DynamicAugmenter
 
 # ==================== CONFIGURATION ====================
 MODELS = {
@@ -233,9 +233,9 @@ def main():
     print(f"Few-shot: {args.shots}")
     print(f"{'='*60}\n")
     
-    # Load dataset
+    # Load dataset - FIXED: specify 'eus_Latn' as name parameter
     print("Loading Belebele dataset (Basque)...")
-    dataset = load_dataset("facebook/belebele", split="eus_Latn")
+    dataset = load_dataset("facebook/belebele", name="eus_Latn", split="test")
     
     if args.limit:
         dataset = dataset.select(range(args.limit))
