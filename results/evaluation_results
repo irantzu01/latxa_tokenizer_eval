@@ -1,12 +1,26 @@
 Evaluation results
 
 EusProficiency;
-Latxa accuracy: 0.3244341265235055
-Final accuracy (Dynamic BPE segmentation + Latxa vocab): 0.2383
-Latxa accuracy I got: 0.3165
+Llama 2 accuracy (reported): 0.2409
+Latxa accuracy (reported): 0.3026
+Latxa accuracy (obtained): 0.2985 (1543/5169)
+Latxa + Dynamic tokenization: 0.2420 (1251/5169)
+Latxa + new tokenizer: 0.2519 (1302/5169)
+Latxa + new tokenizer + FOCUS: 0.2529 (1307/5169)
 
 EusReading;
-Latxa accuracy: 0.3039772727272727
-Final accuracy (Dynamic BPE segmentation + Latxa vocab): 0.2472
+Llama 2 accuracy (reported): 0.2727
+Latxa accuracy (reported): 0.25
+Latxa accuracy (obtained): 0.2472 (87/352)
+Latxa + Dynamic tokenization: 0.2301 (81/352)
+Latxa + new tokenizer: 0.2983 (105/352)
+Latxa + new tokenizer + FOCUS: 0.2841 (100/352)
 
+EusTrivia;
+Llama 2 accuracy (reported): 0.2950
+Latxa accuracy (reported): 0.4216
+Latxa accuracy (obtained): 0.4157 (713/1715)
+Latxa + Dynamic tokenization: 0.2863 (491/1715)
+Latxa + new tokenizer: 0.2694 (462/1715)
+Latxa + new tokenizer + FOCUS: 0.2810 (482/1715)
 
