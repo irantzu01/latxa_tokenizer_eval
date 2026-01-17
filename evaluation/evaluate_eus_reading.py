@@ -63,7 +63,7 @@ answer2letter = {0: "A", 1: "B", 2: "C", 3: "D", 4: "E", 5: "F"}
 letters = ["A", "B", "C", "D", "E", "F"]
 
 # ==================== HELPER FUNCTIONS ====================
-def format_question(doc, max_context_length=300) -> str:
+def format_question(doc, max_context_length=10000) -> str:
     """
     Format a question for the model.
     Truncates long contexts to avoid OOM.
