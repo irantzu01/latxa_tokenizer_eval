@@ -27,14 +27,17 @@ def format_eusreading_question(item):
     question = item["question"]
     candidates = item["candidates"]
     
-    formatted_question = (
-        f"Galdera: {question}\n"
-        f"A: {candidates[0]}\n"
-        f"B: {candidates[1]}\n"
-        f"C: {candidates[2]}\n"
-        f"D: {candidates[3]}\n"
-        f"Erantzuna:"
-    )
+    # Handle variable number of candidates
+    letters = ["A", "B", "C", "D"]
+    formatted_parts = [f"Galdera: {question}"]
+    
+    for i, candidate in enumerate(candidates):
+        if i < len(letters):
+            formatted_parts.append(f"{letters[i]}: {candidate}")
+    
+    formatted_parts.append("Erantzuna:")
+    formatted_question = "\n".join(formatted_parts)
+    
     return formatted_question
 
 def format_eusproficiency_question(item):
