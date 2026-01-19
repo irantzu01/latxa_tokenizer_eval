@@ -25,7 +25,7 @@ sys.path.append(scripts_path)
 
 from evaluation_helper_functions import build_batch_tensors, score_choices
 from tokenizations.dynamic_bpe import Dynamic_BPE
-from dynamic_augmenter_new import DynamicAugmenter
+from scripts.dynamic_augmenter_new import DynamicAugmenter
 
 # ==================== CONFIGURATION ====================
 MODELS = {
@@ -181,10 +181,20 @@ def evaluate_static_model(model, tokenizer, dataset, shots=5, device='cuda'):
             choice_ids = tokenizer.encode(choice_text, add_special_tokens=False)
             full_ids.append(prompt_ids + choice_ids)
         
-        # Score choices
-        input_ids, attention_mask = build_batch_tensors(full_ids, pad_id, device)
-        scores = score_choices(model, input_ids, attention_mask)
+        # Score choices ONE AT A TIME to avoid OOM
+        scores_list = []
+        for seq_ids in full_ids:
+            input_ids_tensor = torch.tensor([seq_ids], dtype=torch.long, device=device)
+            attention_mask_tensor = torch.ones_like(input_ids_tensor)
+            
+            with torch.no_grad():
+                score = score_choices(model, input_ids_tensor, attention_mask_tensor)
+            scores_list.append(score.item())
+            
+            # Clear GPU cache after each choice
+            torch.cuda.empty_cache()
         
+        scores = torch.tensor(scores_list)
         pred = torch.argmax(scores).item()
         is_correct = (pred == item["answer"])
         
@@ -268,10 +278,20 @@ def evaluate_dynamic_model(model, tokenizer, dataset, shots=5, device='cuda'):
             choice_ids = augmenter.tokens_to_ids([choice_tokens])[0]
             full_ids.append(prompt_ids + choice_ids)
         
-        # Score choices
-        input_ids, attention_mask = build_batch_tensors(full_ids, pad_id, device)
-        scores = score_choices(model, input_ids, attention_mask)
+        # Score choices ONE AT A TIME to avoid OOM
+        scores_list = []
+        for seq_ids in full_ids:
+            input_ids_tensor = torch.tensor([seq_ids], dtype=torch.long, device=device)
+            attention_mask_tensor = torch.ones_like(input_ids_tensor)
+            
+            with torch.no_grad():
+                score = score_choices(model, input_ids_tensor, attention_mask_tensor)
+            scores_list.append(score.item())
+            
+            # Clear GPU cache after each choice
+            torch.cuda.empty_cache()
         
+        scores = torch.tensor(scores_list)
         pred = torch.argmax(scores).item()
         is_correct = (pred == item["answer"])
         
