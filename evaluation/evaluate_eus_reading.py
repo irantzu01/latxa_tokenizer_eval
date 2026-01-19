@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """
-Evaluate multiple models on EusReading dataset:
-1. Original Latxa
-2. Latxa with dynamic tokenization
-3. Latxa with Basque tokenizer
-4. Latxa with Basque tokenizer + FOCUS
+Evaluate models on EusReading dataset.
+IMPORTANT: EusReading has passages with multiple questions per passage.
+Each question should be evaluated with its corresponding passage context.
 """
 
 import sys
@@ -16,6 +14,7 @@ from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel
 import torch
 from tqdm import tqdm
+from collections import defaultdict
 
 # Add paths for dynamic tokenization
 project_root = os.path.expanduser("~/MASTER/WiSe25/Lab Rotation/dynamic-tokenization")
@@ -59,21 +58,34 @@ MODELS = {
 seed = 42
 random.seed(seed)
 
-answer2letter = {0: "A", 1: "B", 2: "C", 3: "D", 4: "E", 5: "F"}
-letters = ["A", "B", "C", "D", "E", "F"]
+answer2letter = {0: "A", 1: "B", 2: "C", 3: "D"}
+letters = ["A", "B", "C", "D"]
 
-# ==================== HELPER FUNCTIONS ====================
-def format_question(doc, max_context_length=10000) -> str:
+# ==================== DATASET PROCESSING ====================
+def group_by_context(dataset):
     """
-    Format a question for the model.
-    Truncates long contexts to avoid OOM.
+    Group questions by their context/passage.
+    Returns: dict mapping context -> list of questions
     """
-    # Truncate context if too long
-    context = doc["context"]
-    context_tokens = context.split()
-    if len(context_tokens) > max_context_length:
-        context = " ".join(context_tokens[:max_context_length]) + "..."
+    context_groups = defaultdict(list)
     
+    for idx, item in enumerate(dataset):
+        context = item["context"]
+        context_groups[context].append({
+            "original_idx": idx,
+            "question": item["question"],
+            "candidates": item["candidates"],
+            "answer": item["answer"],
+            "context": context
+        })
+    
+    return context_groups
+
+def format_question(doc) -> str:
+    """
+    Format a single question with its candidates.
+    Does NOT include the passage/context.
+    """
     candidates = doc["candidates"]
     # Filter out empty candidates
     candidates = [c for c in candidates if c and c.strip()]
@@ -86,25 +98,54 @@ def format_question(doc, max_context_length=10000) -> str:
     formatted_choices = "\n".join(
         [f"{choice}: {candidates[i]}" for i, choice in enumerate(choices)]
     )
-    return f"Pasartea: {context}\n\nGaldera: {doc['question']}\n{formatted_choices}\nErantzuna:"
+    return f"Galdera: {doc['question']}\n{formatted_choices}\nErantzuna:"
+
+def format_passage_with_question(doc) -> str:
+    """
+    Format passage + question together.
+    This is what we actually evaluate on.
+    """
+    candidates = doc["candidates"]
+    candidates = [c for c in candidates if c and c.strip()]
+    num_choices = len(candidates)
+    
+    if num_choices < 2:
+        raise ValueError("Invalid number of candidates")
+    
+    choices = letters[:num_choices]
+    formatted_choices = "\n".join(
+        [f"{choice}: {candidates[i]}" for i, choice in enumerate(choices)]
+    )
+    return f"Pasartea: {doc['context']}\n\nGaldera: {doc['question']}\n{formatted_choices}\nErantzuna:"
 
 def build_fewshot_example(doc):
-    """Build a complete example with answer."""
-    candidates = [c for c in doc["candidates"] if c and c.strip()]
-    num_choices = len(candidates)
-    return format_question(doc) + " " + letters[doc["answer"]]
+    """Build a complete few-shot example: passage + question + answer."""
+    return format_passage_with_question(doc) + " " + letters[doc["answer"]]
 
-def build_fewshot_context(dataset, current_idx, k=5):
+def build_fewshot_context(dataset_items, current_item_idx, k=5):
     """
-    Build k-shot context excluding current item.
-    Using k=5 to match original evaluation.
+    Build k-shot context by sampling k random (passage, question) pairs.
+    This matches the original evaluation: each example is passage + question + answer.
+    
+    Args:
+        dataset_items: List of all dataset items (each has context, question, candidates, answer)
+        current_item_idx: Index of current item to exclude
+        k: Number of few-shot examples
     """
     # Pool excludes current example
-    pool = [dataset[i] for i in range(len(dataset)) if i != current_idx]
-    few_shot_examples = random.sample(pool, min(k, len(pool)))
+    pool = [dataset_items[i] for i in range(len(dataset_items)) if i != current_item_idx]
+    
+    if len(pool) < k:
+        k = len(pool)
+    
+    # Sample k random examples (each is a passage + question pair)
+    few_shot_examples = random.sample(pool, k)
+    
+    # Build few-shot text
     texts = [build_fewshot_example(ex) for ex in few_shot_examples]
     return "\n\n".join(texts)
 
+# ==================== EVALUATION FUNCTIONS ====================
 def evaluate_static_model(model, tokenizer, dataset, shots=5, device='cuda'):
     """Evaluate a model with static tokenization."""
     correct = 0
@@ -113,15 +154,20 @@ def evaluate_static_model(model, tokenizer, dataset, shots=5, device='cuda'):
     
     pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id else tokenizer.eos_token_id
     
-    for idx, item in enumerate(tqdm(dataset, desc="Evaluating")):
+    # Convert dataset to list for easier indexing
+    dataset_items = list(dataset)
+    
+    for idx, item in enumerate(tqdm(dataset_items, desc="Evaluating")):
         # Filter candidates
         candidates = [c for c in item["candidates"] if c and c.strip()]
         if len(candidates) < 2:
-            continue  # Skip invalid items
+            continue
         
-        # Build prompt with few-shot examples
-        fewshot_context = build_fewshot_context(dataset, idx, k=shots)
-        query_text = format_question(item)
+        # Build few-shot context: k random (passage, question) pairs
+        fewshot_context = build_fewshot_context(dataset_items, idx, k=shots)
+        
+        # Current question with its passage
+        query_text = format_passage_with_question(item)
         prompt_text = fewshot_context + "\n\n" + query_text
         
         # Tokenize prompt
@@ -135,18 +181,10 @@ def evaluate_static_model(model, tokenizer, dataset, shots=5, device='cuda'):
             choice_ids = tokenizer.encode(choice_text, add_special_tokens=False)
             full_ids.append(prompt_ids + choice_ids)
         
-        # Score choices one at a time to avoid OOM
-        scores_list = []
-        for seq_ids in full_ids:
-            input_ids_tensor = torch.tensor([seq_ids], dtype=torch.long, device=device)
-            attention_mask_tensor = torch.ones_like(input_ids_tensor)
-            
-            with torch.no_grad():
-                score = score_choices(model, input_ids_tensor, attention_mask_tensor)
-            scores_list.append(score.item())
-            torch.cuda.empty_cache()
+        # Score choices
+        input_ids, attention_mask = build_batch_tensors(full_ids, pad_id, device)
+        scores = score_choices(model, input_ids, attention_mask)
         
-        scores = torch.tensor(scores_list)
         pred = torch.argmax(scores).item()
         is_correct = (pred == item["answer"])
         
@@ -199,18 +237,22 @@ def evaluate_dynamic_model(model, tokenizer, dataset, shots=5, device='cuda'):
     
     pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id else tokenizer.eos_token_id
     
-    # Import dynamic tokenization helper
     from evaluation_helper_functions import dynamic_tokenize_texts
     
-    for idx, item in enumerate(tqdm(dataset, desc="Evaluating (dynamic)")):
+    # Convert dataset to list for easier indexing
+    dataset_items = list(dataset)
+    
+    for idx, item in enumerate(tqdm(dataset_items, desc="Evaluating (dynamic)")):
         # Filter candidates
         candidates = [c for c in item["candidates"] if c and c.strip()]
         if len(candidates) < 2:
             continue
         
-        # Build prompt with few-shot examples
-        fewshot_context = build_fewshot_context(dataset, idx, k=shots)
-        query_text = format_question(item)
+        # Build few-shot context: k random (passage, question) pairs
+        fewshot_context = build_fewshot_context(dataset_items, idx, k=shots)
+        
+        # Current question with its passage
+        query_text = format_passage_with_question(item)
         prompt_text = fewshot_context + "\n\n" + query_text
         
         # Tokenize with dynamic BPE
@@ -226,18 +268,10 @@ def evaluate_dynamic_model(model, tokenizer, dataset, shots=5, device='cuda'):
             choice_ids = augmenter.tokens_to_ids([choice_tokens])[0]
             full_ids.append(prompt_ids + choice_ids)
         
-        # Score choices one at a time
-        scores_list = []
-        for seq_ids in full_ids:
-            input_ids_tensor = torch.tensor([seq_ids], dtype=torch.long, device=device)
-            attention_mask_tensor = torch.ones_like(input_ids_tensor)
-            
-            with torch.no_grad():
-                score = score_choices(model, input_ids_tensor, attention_mask_tensor)
-            scores_list.append(score.item())
-            torch.cuda.empty_cache()
+        # Score choices
+        input_ids, attention_mask = build_batch_tensors(full_ids, pad_id, device)
+        scores = score_choices(model, input_ids, attention_mask)
         
-        scores = torch.tensor(scores_list)
         pred = torch.argmax(scores).item()
         is_correct = (pred == item["answer"])
         
@@ -264,11 +298,9 @@ def main():
                        choices=list(MODELS.keys()),
                        help="Model to evaluate")
     parser.add_argument("--shots", type=int, default=5, 
-                       help="Number of few-shot examples (default: 5)")
+                       help="Number of few-shot examples (passages)")
     parser.add_argument("--limit", type=int, default=None, 
-                       help="Limit number of examples")
-    parser.add_argument("--max_context", type=int, default=300,
-                       help="Max context length in tokens (default: 300)")
+                       help="Limit number of questions")
     args = parser.parse_args()
     
     model_config = MODELS[args.model]
@@ -276,27 +308,18 @@ def main():
     print(f"\n{'='*60}")
     print(f"Evaluating: {model_config['description']}")
     print(f"Model path: {model_config['path']}")
-    print(f"Few-shot: {args.shots}")
-    print(f"Max context length: {args.max_context} words")
+    print(f"Few-shot: {args.shots} passages")
     print(f"{'='*60}\n")
     
     # Load dataset
     print("Loading EusReading dataset...")
     dataset = load_dataset("HiTZ/EusReading", name="default", split="test")
     
-    # Filter valid items
-    valid_dataset = []
-    for item in dataset:
-        candidates = [c for c in item["candidates"] if c and c.strip()]
-        if len(candidates) >= 2:
-            valid_dataset.append(item)
-    
-    print(f"Total items: {len(dataset)}")
-    print(f"Valid items: {len(valid_dataset)}")
+    print(f"Total dataset size: {len(dataset)} questions")
     
     if args.limit:
-        valid_dataset = valid_dataset[:args.limit]
-        print(f"Limited to {args.limit} examples")
+        dataset = dataset.select(range(args.limit))
+        print(f"Limited to {args.limit} questions")
     
     # Load model and tokenizer
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -312,11 +335,11 @@ def main():
     # Evaluate
     if model_config["use_dynamic"]:
         accuracy, results = evaluate_dynamic_model(
-            model, tokenizer, valid_dataset, shots=args.shots, device=device
+            model, tokenizer, dataset, shots=args.shots, device=device
         )
     else:
         accuracy, results = evaluate_static_model(
-            model, tokenizer, valid_dataset, shots=args.shots, device=device
+            model, tokenizer, dataset, shots=args.shots, device=device
         )
     
     # Save results
