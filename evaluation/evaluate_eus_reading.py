@@ -25,7 +25,7 @@ sys.path.append(scripts_path)
 
 from evaluation_helper_functions import build_batch_tensors, score_choices
 from tokenizations.dynamic_bpe import Dynamic_BPE
-from scripts.dynamic_augmenter_new import DynamicAugmenter
+from dynamic_augmenter_new import DynamicAugmenter
 
 # ==================== CONFIGURATION ====================
 MODELS = {
