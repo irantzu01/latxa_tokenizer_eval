@@ -31,5 +31,8 @@ echo "Running python experiment..."
 
 # === 4. RUN YOUR PYTHON SCRIPT ===
 python evaluation/debug_answer_scoring.py --model latxa_original
+python evaluation/debug_answer_scoring.py --model latxa_dynamic
+python evaluation/debug_answer_scoring.py --model latxa_basque_tokenizer
+python evaluation/debug_answer_scoring.py --model latxa_basque_focus
 
 echo "Job finished."
