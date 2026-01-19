@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Evaluate all models on all BasqueGLUE tasks in a single run.
-Evaluates 4 models × 6 tasks = 24 configurations.
+Evaluate a single model on all BasqueGLUE tasks.
+Choose model via command line argument.
 """
 
 import sys
@@ -10,6 +10,7 @@ import json
 import random
 import html
 import re
+import argparse
 from datasets import load_dataset, load_metric
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel
 import torch
@@ -57,6 +58,7 @@ MODELS = {
 SHOTS = 5
 seed = 42
 random.seed(seed)
+torch.manual_seed(seed)
 
 # ==================== HELPER FUNCTIONS ====================
 def general_detokenize(string):
@@ -118,9 +120,9 @@ def build_fewshot_example(item, format_question_func, labels):
     answer = labels[item['label']] if isinstance(item['label'], int) else item['label']
     return question + " " + answer
 
-def build_fewshot_context(dataset, current_idx, format_question_func, labels, k=5):
+def build_fewshot_context(dataset_list, current_idx, format_question_func, labels, k=5):
     """Build k-shot context excluding current item."""
-    pool = [dataset[i] for i in range(len(dataset)) if i != current_idx]
+    pool = [dataset_list[i] for i in range(len(dataset_list)) if i != current_idx]
     few_shot_examples = random.sample(pool, min(k, len(pool)))
     texts = [build_fewshot_example(ex, format_question_func, labels) for ex in few_shot_examples]
     return "\n\n".join(texts)
@@ -164,9 +166,12 @@ def evaluate_static_model(model, tokenizer, dataset, task, device='cuda'):
     
     pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id else tokenizer.eos_token_id
     
-    for idx, item in enumerate(tqdm(dataset, desc=f"  {task}")):
+    # Convert to list for proper indexing
+    dataset_list = list(dataset)
+    
+    for idx, item in enumerate(tqdm(dataset_list, desc=f"  {task}")):
         fewshot_context = build_fewshot_context(
-            dataset, idx, format_question_func, possible_answers, k=SHOTS
+            dataset_list, idx, format_question_func, possible_answers, k=SHOTS
         )
         query_text = format_question_func(item)
         prompt_text = fewshot_context + "\n\n" + query_text
@@ -180,7 +185,10 @@ def evaluate_static_model(model, tokenizer, dataset, task, device='cuda'):
             full_ids.append(prompt_ids + answer_ids)
         
         input_ids, attention_mask = build_batch_tensors(full_ids, pad_id, device)
-        scores = score_choices(model, input_ids, attention_mask)
+        
+        # CRITICAL: Use torch.no_grad() for inference
+        with torch.no_grad():
+            scores = score_choices(model, input_ids, attention_mask)
         
         pred_idx = torch.argmax(scores).item()
         gold_idx = item["label"]
@@ -198,7 +206,7 @@ def evaluate_static_model(model, tokenizer, dataset, task, device='cuda'):
     score = eval_func(y_gold_and_pred)
     return score, results
 
-def evaluate_dynamic_model(model, tokenizer, augmenter, dataset, task, device='cuda'):
+def evaluate_dynamic_model(model, tokenizer, augmenter, dynamic_bpe, dataset, task, device='cuda'):
     """Evaluate a model with dynamic tokenization."""
     format_question_func, eval_func, possible_answers = CONFIGS[task]
     
@@ -208,17 +216,13 @@ def evaluate_dynamic_model(model, tokenizer, augmenter, dataset, task, device='c
     pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id else tokenizer.eos_token_id
     
     from evaluation_helper_functions import dynamic_tokenize_texts
-    from tokenizations.dynamic_bpe import Dynamic_BPE
     
-    # Get dynamic_bpe from augmenter if not passed
-    hypernet_tokenizer = AutoTokenizer.from_pretrained(
-        "benjamin/zett-hypernetwork-Meta-Llama-3-8B-experimental"
-    )
-    dynamic_bpe = Dynamic_BPE(tokenizer=hypernet_tokenizer, tokenizer_boundary="pretokens")
+    # Convert to list for proper indexing
+    dataset_list = list(dataset)
     
-    for idx, item in enumerate(tqdm(dataset, desc=f"  {task} (dynamic)")):
+    for idx, item in enumerate(tqdm(dataset_list, desc=f"  {task} (dynamic)")):
         fewshot_context = build_fewshot_context(
-            dataset, idx, format_question_func, possible_answers, k=SHOTS
+            dataset_list, idx, format_question_func, possible_answers, k=SHOTS
         )
         query_text = format_question_func(item)
         prompt_text = fewshot_context + "\n\n" + query_text
@@ -234,7 +238,10 @@ def evaluate_dynamic_model(model, tokenizer, augmenter, dataset, task, device='c
             full_ids.append(prompt_ids + answer_ids)
         
         input_ids, attention_mask = build_batch_tensors(full_ids, pad_id, device)
-        scores = score_choices(model, input_ids, attention_mask)
+        
+        # CRITICAL: Use torch.no_grad() for inference
+        with torch.no_grad():
+            scores = score_choices(model, input_ids, attention_mask)
         
         pred_idx = torch.argmax(scores).item()
         gold_idx = item["label"]
@@ -254,113 +261,122 @@ def evaluate_dynamic_model(model, tokenizer, augmenter, dataset, task, device='c
 
 # ==================== MAIN ====================
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", type=str, required=True,
+                       choices=list(MODELS.keys()),
+                       help="Model to evaluate")
+    parser.add_argument("--task", type=str, default=None,
+                       choices=list(CONFIGS.keys()),
+                       help="Specific task to evaluate (default: all tasks)")
+    args = parser.parse_args()
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    # Store all results
-    all_results = {}
+    model_name = args.model
+    model_config = MODELS[model_name]
     
+    print(f"\n{'='*80}")
+    print(f"LOADING MODEL: {model_config['description']}")
+    print(f"{'='*80}")
+    
+    # Load model once
+    model = AutoModelForCausalLM.from_pretrained(model_config["path"])
+    tokenizer = AutoTokenizer.from_pretrained(model_config["tokenizer_path"])
+    model.to(device)
+    model.eval()
+    print("✓ Model loaded")
+    
+    # Initialize dynamic augmenter if needed
+    augmenter = None
+    dynamic_bpe = None
+    if model_config["use_dynamic"]:
+        print("Initializing dynamic components...")
+        hypernet = AutoModel.from_pretrained(
+            "benjamin/zett-hypernetwork-Meta-Llama-3-8B-experimental",
+            trust_remote_code=True
+        )
+        hypernet_tokenizer = AutoTokenizer.from_pretrained(
+            "benjamin/zett-hypernetwork-Meta-Llama-3-8B-experimental"
+        )
+        dynamic_bpe = Dynamic_BPE(
+            tokenizer=hypernet_tokenizer,
+            tokenizer_boundary="pretokens"
+        )
+        augmenter = DynamicAugmenter(
+            model=model,
+            latxa_tokenizer=tokenizer,
+            hypernet=hypernet,
+            hypernet_tokenizer=hypernet_tokenizer,
+            cache_limit=50000,
+            device=device
+        )
+        print("✓ Dynamic components loaded")
+    
+    # Determine which tasks to evaluate
+    tasks_to_eval = [args.task] if args.task else list(CONFIGS.keys())
+    
+    model_results = {}
     os.makedirs("results", exist_ok=True)
     
-    # Iterate through all models
-    for model_name, model_config in MODELS.items():
-        print(f"\n{'='*80}")
-        print(f"LOADING MODEL: {model_config['description']}")
-        print(f"{'='*80}")
+    # Evaluate on tasks
+    for task_name in tasks_to_eval:
+        print(f"\n{'='*60}")
+        print(f"Evaluating task: {task_name}")
+        print(f"{'='*60}")
         
-        # Load model once
-        model = AutoModelForCausalLM.from_pretrained(model_config["path"])
-        tokenizer = AutoTokenizer.from_pretrained(model_config["tokenizer_path"])
-        model.to(device)
-        model.eval()
+        # Load dataset
+        dataset = load_dataset("orai-nlp/basqueGLUE", name=task_name, split="test")
+        if task_name == 'wic':
+            dataset = process_wic_docs(dataset)
         
-        # Initialize dynamic augmenter if needed
-        augmenter = None
+        print(f"Dataset size: {len(dataset)}")
+        
+        # Evaluate
         if model_config["use_dynamic"]:
-            print("Initializing dynamic components...")
-            hypernet = AutoModel.from_pretrained(
-                "benjamin/zett-hypernetwork-Meta-Llama-3-8B-experimental",
-                trust_remote_code=True
+            score, results = evaluate_dynamic_model(
+                model, tokenizer, augmenter, dynamic_bpe, dataset, task_name, device=device
             )
-            hypernet_tokenizer = AutoTokenizer.from_pretrained(
-                "benjamin/zett-hypernetwork-Meta-Llama-3-8B-experimental"
-            )
-            augmenter = DynamicAugmenter(
-                model=model,
-                latxa_tokenizer=tokenizer,
-                hypernet=hypernet,
-                hypernet_tokenizer=hypernet_tokenizer,
-                cache_limit=50000,
-                device=device
+        else:
+            score, results = evaluate_static_model(
+                model, tokenizer, dataset, task_name, device=device
             )
         
-        model_results = {}
+        model_results[task_name] = score
         
-        # Evaluate on all tasks
-        for task_name in CONFIGS.keys():
-            print(f"\nEvaluating task: {task_name}")
-            
-            # Load dataset
-            dataset = load_dataset("orai-nlp/basqueGLUE", name=task_name, split="test")
-            if task_name == 'wic':
-                dataset = process_wic_docs(dataset)
-            
-            # Evaluate
-            if model_config["use_dynamic"]:
-                score, results = evaluate_dynamic_model(
-                    model, tokenizer, augmenter, dataset, task_name, device=device
-                )
-            else:
-                score, results = evaluate_static_model(
-                    model, tokenizer, dataset, task_name, device=device
-                )
-            
-            model_results[task_name] = score
-            
-            # Save detailed results
-            results_file = f"results/basqueglue_{task_name}_{model_name}_{SHOTS}shot.jsonl"
-            with open(results_file, "w") as f:
-                for result in results:
-                    f.write(json.dumps(result) + "\n")
-            
-            _, eval_func, _ = CONFIGS[task_name]
-            metric_name = eval_func.__name__.replace('_', ' ').title()
-            print(f"  ✓ {metric_name}: {score:.4f}")
+        # Save detailed results
+        results_file = f"results/basqueglue_{task_name}_{model_name}_{SHOTS}shot.jsonl"
+        with open(results_file, "w") as f:
+            for result in results:
+                f.write(json.dumps(result) + "\n")
         
-        all_results[model_name] = model_results
-        
-        # Clear GPU memory
-        del model
-        if augmenter:
-            del augmenter
-        torch.cuda.empty_cache()
+        _, eval_func, _ = CONFIGS[task_name]
+        metric_name = eval_func.__name__.replace('_', ' ').title()
+        print(f"\n✓ {task_name} - {metric_name}: {score:.4f}")
+        print(f"  Results saved to: {results_file}")
     
-    # Print summary table
+    # Print summary
     print(f"\n{'='*80}")
-    print("FINAL RESULTS SUMMARY")
-    print(f"{'='*80}\n")
+    print(f"RESULTS SUMMARY: {model_config['description']}")
+    print(f"{'='*80}")
     
-    # Header
-    print(f"{'Model':<30}", end="")
-    for task in CONFIGS.keys():
-        print(f"{task:>12}", end="")
-    print()
-    print("-" * 80)
-    
-    # Results
-    for model_name, model_config in MODELS.items():
-        print(f"{model_config['description']:<30}", end="")
-        for task in CONFIGS.keys():
-            score = all_results[model_name][task]
-            print(f"{score:>12.4f}", end="")
-        print()
+    for task_name, score in model_results.items():
+        _, eval_func, _ = CONFIGS[task_name]
+        metric_name = eval_func.__name__.replace('_', ' ').title()
+        print(f"{task_name:>10}: {score:.4f} ({metric_name})")
     
     # Save summary
-    summary_file = "results/basqueglue_summary.json"
-    with open(summary_file, "w") as f:
-        json.dump(all_results, f, indent=2)
+    summary_file = f"results/basqueglue_{model_name}_{SHOTS}shot_summary.json"
+    summary = {
+        "model": model_name,
+        "description": model_config['description'],
+        "shots": SHOTS,
+        "results": model_results
+    }
     
-    print(f"\n{'='*80}")
-    print(f"Summary saved to: {summary_file}")
+    with open(summary_file, "w") as f:
+        json.dump(summary, f, indent=2)
+    
+    print(f"\n✓ Summary saved to: {summary_file}")
     print(f"{'='*80}\n")
 
 if __name__ == "__main__":
