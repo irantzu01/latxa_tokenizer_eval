@@ -29,16 +29,15 @@ else:
     print("\n⚠️  WARNING: No GPU detected! Training will be VERY slow on CPU.")
     print("Make sure to request GPU in your SLURM job with: #SBATCH --gres=gpu:A100:1\n")
 
-batch_size = 8                      # Increased for A100
-gradient_accumulation_steps = 4     # Reduced since batch_size is higher (effective batch still 32)
-learning_rate = 5e-4                # Increased from 1e-4 for better embedding learning
+batch_size = 8                      
+gradient_accumulation_steps = 4     
+learning_rate = 5e-4                
 epochs = 3
 max_length = 1024
-save_dir = os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_FOCUS")
+save_dir = os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_FOCUS_improved")
 corpus_file = "data/basque_corpus_sampled_250k.txt"
-val_fraction = 0.01                  # Fraction of corpus for validation
-max_steps_per_epoch = None           # Set to a number to limit steps per epoch (e.g., 10000)
-save_total_limit = 1                 # Keep only the N most recent checkpoints (None = keep all)
+val_fraction = 0.01                  
+max_steps_per_epoch = None           
 
 os.makedirs(save_dir, exist_ok=True)
 
@@ -54,33 +53,14 @@ model = AutoModelForCausalLM.from_pretrained(
     model_name, 
     device_map="auto", 
     low_cpu_mem_usage=True,
-    torch_dtype=torch.bfloat16  # Use bfloat16 for better memory efficiency
+    torch_dtype=torch.bfloat16
 )
 
-# ================ Embed alignment ==================
-print("Aligning embeddings with Basque tokenizer...")
+# ================ Embed alignment with FOCUS ==================
+print("Aligning embeddings with Basque tokenizer using FOCUS...")
 latxa_tokenizer = AutoTokenizer.from_pretrained(model_name)
-latxa_vocab = latxa_tokenizer.get_vocab()
-basque_vocab = tokenizer.get_vocab()
 
-# Find overlapping and new tokens
-old_token_ids = []
-new_token_ids = []
-for tok, idx in basque_vocab.items():
-    if tok in latxa_vocab:
-        old_token_ids.append(idx)
-    else:
-        new_token_ids.append(idx)
-
-print(f"Vocab overlap: {len(old_token_ids)} tokens")
-print(f"New tokens: {len(new_token_ids)} tokens")
-
-# Resize embeddings
-old_embeddings = model.get_input_embeddings()
-model.resize_token_embeddings(len(tokenizer))
-
-from focus_initialization import initialize_embeddings_with_focus
-
+# FOCUS will handle resizing internally - don't resize here!
 # Initialize embeddings with FOCUS method
 old_token_ids, new_token_ids = initialize_embeddings_with_focus(
     model=model,
@@ -100,15 +80,6 @@ for param in model.get_output_embeddings().parameters():
 # Unfreeze all embeddings
 model.get_input_embeddings().weight.requires_grad = True
 
-# Freeze old token embeddings
-# if len(old_token_ids) > 0:
-#     old_idx_tensor = torch.tensor(old_token_ids, dtype=torch.long)
-#     def zero_grad_old_tokens(grad):
-#         if grad is not None:
-#             grad.index_fill_(0, old_idx_tensor.to(grad.device), 0)
-#         return grad
-#     model.get_input_embeddings().weight.register_hook(zero_grad_old_tokens)
-
 print("Middle layers frozen. All token embeddings + LM head will be trained.")
 
 # Count trainable parameters
@@ -125,7 +96,6 @@ class BasqueStreamingDataset(IterableDataset):
         self.val_fraction = val_fraction
         self.split = split
 
-        # Count total lines
         print(f"Counting lines in {file_path}...")
         with open(file_path, "r", encoding="utf-8") as f:
             self.total_lines = sum(1 for _ in f)
@@ -141,7 +111,6 @@ class BasqueStreamingDataset(IterableDataset):
                 if not line:
                     continue
                 
-                # Split logic
                 if self.split == "train" and idx >= self.train_cutoff:
                     continue
                 if self.split == "val" and idx < self.train_cutoff:
@@ -159,7 +128,6 @@ class BasqueStreamingDataset(IterableDataset):
                 }
     
     def get_num_samples(self):
-        """Estimate number of samples for this split"""
         if self.split == "train":
             return self.train_cutoff
         else:
@@ -193,12 +161,12 @@ print(f"Effective batch size: {batch_size * gradient_accumulation_steps}")
 optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate)
 
 num_training_steps = epochs * (estimated_steps_per_epoch // gradient_accumulation_steps)
-num_warmup_steps = int(0.1 * num_training_steps)  # Increased from 0.05 to 0.1
+num_warmup_steps = int(0.1 * num_training_steps)
 print(f"Total training steps: {num_training_steps:,}")
 print(f"Warmup steps: {num_warmup_steps:,}")
 
 scheduler = get_scheduler(
-    "cosine",  # Changed from "linear" to "cosine" for better convergence
+    "cosine",
     optimizer=optimizer,
     num_warmup_steps=num_warmup_steps,
     num_training_steps=num_training_steps
@@ -223,54 +191,7 @@ def evaluate_ppl(model, dataloader, max_batches=100):
     perplexity = math.exp(avg_loss) if not math.isnan(avg_loss) else float("nan")
     return perplexity, avg_loss
 
-def cleanup_old_checkpoints(save_dir, save_total_limit, keep_best=True):
-    """
-    Keep only the most recent checkpoints and optionally the best checkpoint.
-    
-    Args:
-        save_dir: Base directory containing checkpoints
-        save_total_limit: Number of epoch checkpoints to keep (None = keep all)
-        keep_best: Whether to always keep the best checkpoint
-    """
-    if save_total_limit is None:
-        return
-    
-    # Find all epoch checkpoint directories
-    epoch_dirs = []
-    best_dir = None
-    
-    for item in os.listdir(save_dir):
-        item_path = os.path.join(save_dir, item)
-        if os.path.isdir(item_path):
-            if item.startswith("epoch-"):
-                try:
-                    epoch_num = int(item.split("-")[1])
-                    epoch_dirs.append((epoch_num, item_path))
-                except (ValueError, IndexError):
-                    continue
-            elif item.startswith("checkpoint-epoch"):
-                best_dir = item_path
-    
-    # Sort by epoch number (most recent last)
-    epoch_dirs.sort(key=lambda x: x[0])
-    
-    # Determine which checkpoints to delete
-    if len(epoch_dirs) > save_total_limit:
-        dirs_to_delete = epoch_dirs[:-save_total_limit]  # Keep only the last N
-        
-        for epoch_num, dir_path in dirs_to_delete:
-            # Don't delete the best checkpoint if keep_best is True
-            if keep_best and best_dir and os.path.samefile(dir_path, best_dir):
-                continue
-            
-            print(f"Removing old checkpoint: {dir_path}")
-            shutil.rmtree(dir_path)
-            
-            # Free up GPU memory if needed
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-
-# ================== 8️⃣ Training loop ==================
+# ================== Training loop ==================
 print("\n" + "="*50)
 print("Starting training...")
 print("="*50 + "\n")
@@ -278,6 +199,7 @@ print("="*50 + "\n")
 model.train()
 global_step = 0
 best_ppl = float('inf')
+best_epoch = 0
 
 for epoch in range(epochs):
     print(f"\n{'='*50}")
@@ -291,7 +213,6 @@ for epoch in range(epochs):
     loop = tqdm(train_loader, desc=f"Epoch {epoch+1}", total=estimated_steps_per_epoch)
     
     for step, batch in enumerate(loop):
-        # Limit steps per epoch if specified
         if max_steps_per_epoch and step >= max_steps_per_epoch:
             break
             
@@ -304,9 +225,7 @@ for epoch in range(epochs):
         epoch_steps += 1
 
         if (step + 1) % gradient_accumulation_steps == 0:
-            # Gradient clipping
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            
             optimizer.step()
             scheduler.step()
             optimizer.zero_grad()
@@ -334,35 +253,38 @@ for epoch in range(epochs):
     val_ppl, val_loss = evaluate_ppl(model, val_loader, max_batches=100)
     print(f"Validation - Loss: {val_loss:.4f}, Perplexity: {val_ppl:.2f}")
     
-    # Save best model
+    # Save best model to 'final' directory
     if val_ppl < best_ppl:
         best_ppl = val_ppl
-        checkpoint_dir = os.path.join(save_dir, f"checkpoint-epoch{epoch+1}")
-        os.makedirs(checkpoint_dir, exist_ok=True)
-        model.save_pretrained(checkpoint_dir)
-        tokenizer.save_pretrained(checkpoint_dir)
-        print(f"✓ New best model saved to {checkpoint_dir}")
-    
-    # Save checkpoint every epoch
-    epoch_dir = os.path.join(save_dir, f"epoch-{epoch+1}")
-    os.makedirs(epoch_dir, exist_ok=True)
-    model.save_pretrained(epoch_dir)
-    tokenizer.save_pretrained(epoch_dir)
-    print(f"✓ Checkpoint saved to {epoch_dir}")
-    
-    # Clean up old checkpoints to save space
-    cleanup_old_checkpoints(save_dir, save_total_limit, keep_best=True)
-    print(f"✓ Old checkpoints cleaned up (keeping last {save_total_limit})")
+        best_epoch = epoch + 1
+        
+        final_dir = os.path.join(save_dir, "final")
+        
+        # Remove old best checkpoint if it exists
+        if os.path.exists(final_dir):
+            print(f"Removing previous best checkpoint...")
+            shutil.rmtree(final_dir)
+        
+        # Save new best
+        os.makedirs(final_dir, exist_ok=True)
+        model.save_pretrained(final_dir)
+        tokenizer.save_pretrained(final_dir)
+        
+        # Save metadata
+        with open(os.path.join(final_dir, "best_checkpoint_info.txt"), "w") as f:
+            f.write(f"Best checkpoint from Epoch {best_epoch}\n")
+            f.write(f"Validation Loss: {val_loss:.4f}\n")
+            f.write(f"Validation Perplexity: {val_ppl:.2f}\n")
+        
+        print(f"✓ New best model saved to {final_dir} (Epoch {best_epoch}, PPL: {val_ppl:.2f})")
+    else:
+        print(f"  No improvement (best PPL: {best_ppl:.2f} from Epoch {best_epoch})")
 
-# ================== Save final model ==================
-final_dir = os.path.join(save_dir, "final")
-os.makedirs(final_dir, exist_ok=True)
-model.save_pretrained(final_dir)
-tokenizer.save_pretrained(final_dir)
+# ================== Training complete ==================
 print(f"\n{'='*50}")
 print(f"Training complete!")
-print(f"Final model saved to '{final_dir}'")
-print(f"Best validation perplexity: {best_ppl:.2f}")
+print(f"Best model saved to '{os.path.join(save_dir, 'final')}'")
+print(f"Best validation perplexity: {best_ppl:.2f} (Epoch {best_epoch})")
 print(f"{'='*50}\n")
 
 # ================== Test generation ==================
