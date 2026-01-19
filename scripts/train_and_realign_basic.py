@@ -46,8 +46,8 @@ gradient_accumulation_steps = 4     # Reduced since batch_size is higher (effect
 learning_rate = 5e-4                # Increased from 1e-4 for better embedding learning
 epochs = 3
 max_length = 1024
-save_dir = os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_500k_improved")
-corpus_file = "data/basque_corpus_sampled.txt"
+save_dir = os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_improved")
+corpus_file = "data/basque_corpus_sampled_250k.txt"
 val_fraction = 0.01                  # Fraction of corpus for validation
 max_steps_per_epoch = None           # Set to a number to limit steps per epoch (e.g., 10000)
 save_total_limit = 1                 # Keep only the N most recent checkpoints (None = keep all)
@@ -99,24 +99,58 @@ for tok, idx in basque_vocab.items():
 print(f"Vocab overlap: {len(old_token_ids)} tokens")
 print(f"New tokens: {len(new_token_ids)} tokens")
 
-# Resize embeddings
+# Resize embeddings FIRST
 old_embeddings = model.get_input_embeddings()
 model.resize_token_embeddings(len(tokenizer))
 
-# Initialize new embeddings: copy from similar tokens or use mean of existing embeddings
+# Get the embedding weights after resizing
 embedding_weights = model.get_input_embeddings().weight.data
+
+# STEP 1: Copy overlapping tokens from old positions to new positions
+print(f"Copying {len(old_token_ids)} overlapping token embeddings...")
+for tok, new_idx in basque_vocab.items():
+    if tok in latxa_vocab:
+        old_idx = latxa_vocab[tok]
+        # Copy the embedding from old position to new position
+        embedding_weights[new_idx] = old_embeddings.weight.data[old_idx].clone()
+
+# STEP 2: Initialize truly new tokens with mean + noise
 if len(new_token_ids) > 0:
-    # Calculate mean and std of existing embeddings for better initialization
-    existing_embeddings = embedding_weights[:len(latxa_vocab)]
+    print(f"Initializing {len(new_token_ids)} new embeddings with mean from existing tokens...")
+    
+    # Calculate mean and std from the OLD embeddings (before resize)
+    existing_embeddings = old_embeddings.weight.data
     existing_mean = existing_embeddings.mean(dim=0)
     existing_std = existing_embeddings.std(dim=0).mean().item()
     
-    print(f"Initializing {len(new_token_ids)} new embeddings with mean from existing tokens")
     for idx in new_token_ids:
-        # Initialize with small random noise around the mean of existing embeddings
-        # Make sure the random tensor is on the same device as embedding_weights
-        noise = torch.randn(model.config.hidden_size, dtype=embedding_weights.dtype, device=embedding_weights.device)
+        # Initialize with small random noise around the mean
+        noise = torch.randn(
+            model.config.hidden_size, 
+            dtype=embedding_weights.dtype, 
+            device=embedding_weights.device
+        )
         embedding_weights[idx] = existing_mean + noise * (existing_std * 0.1)
+
+# STEP 3: Also initialize output embeddings (LM head) the same way
+print("Initializing LM head (output embeddings)...")
+output_embedding_weights = model.get_output_embeddings().weight.data
+
+# Copy overlapping tokens
+for tok, new_idx in basque_vocab.items():
+    if tok in latxa_vocab:
+        old_idx = latxa_vocab[tok]
+        output_embedding_weights[new_idx] = old_embeddings.weight.data[old_idx].clone()
+
+# Initialize new tokens
+if len(new_token_ids) > 0:
+    for idx in new_token_ids:
+        noise = torch.randn(
+            model.config.hidden_size, 
+            dtype=output_embedding_weights.dtype, 
+            device=output_embedding_weights.device
+        )
+        output_embedding_weights[idx] = existing_mean + noise * (existing_std * 0.1)
 
 # Freeze all parameters
 for param in model.parameters():
@@ -128,15 +162,6 @@ for param in model.get_output_embeddings().parameters():
 
 # Unfreeze ALL embeddings (not just new tokens)
 model.get_input_embeddings().weight.requires_grad = True
-
-# OPTION: Uncomment below to freeze old token embeddings (currently disabled for better learning)
-# if len(old_token_ids) > 0:
-#     old_idx_tensor = torch.tensor(old_token_ids, dtype=torch.long)
-#     def zero_grad_old_tokens(grad):
-#         if grad is not None:
-#             grad.index_fill_(0, old_idx_tensor.to(grad.device), 0)
-#         return grad
-#     model.get_input_embeddings().weight.register_hook(zero_grad_old_tokens)
 
 print("Middle layers frozen. All token embeddings + LM head will be trained.")
 
@@ -307,6 +332,7 @@ print("="*50 + "\n")
 model.train()
 global_step = 0
 best_ppl = float('inf')
+best_epoch = 0
 
 for epoch in range(epochs):
     print(f"\n{'='*50}")
@@ -363,35 +389,38 @@ for epoch in range(epochs):
     val_ppl, val_loss = evaluate_ppl(model, val_loader, max_batches=100)
     print(f"Validation - Loss: {val_loss:.4f}, Perplexity: {val_ppl:.2f}")
     
-    # Save best model
+    # Save best model to 'final' directory
     if val_ppl < best_ppl:
         best_ppl = val_ppl
-        checkpoint_dir = os.path.join(save_dir, f"checkpoint-epoch{epoch+1}")
-        os.makedirs(checkpoint_dir, exist_ok=True)
-        model.save_pretrained(checkpoint_dir)
-        tokenizer.save_pretrained(checkpoint_dir)
-        print(f"✓ New best model saved to {checkpoint_dir}")
-    
-    # Save checkpoint every epoch
-    epoch_dir = os.path.join(save_dir, f"epoch-{epoch+1}")
-    os.makedirs(epoch_dir, exist_ok=True)
-    model.save_pretrained(epoch_dir)
-    tokenizer.save_pretrained(epoch_dir)
-    print(f"✓ Checkpoint saved to {epoch_dir}")
-    
-    # Clean up old checkpoints to save space
-    cleanup_old_checkpoints(save_dir, save_total_limit, keep_best=True)
-    print(f"✓ Old checkpoints cleaned up (keeping last {save_total_limit})")
+        best_epoch = epoch + 1
+        
+        final_dir = os.path.join(save_dir, "final")
+        
+        # Remove old best checkpoint if it exists
+        if os.path.exists(final_dir):
+            print(f"Removing previous best checkpoint...")
+            shutil.rmtree(final_dir)
+        
+        # Save new best
+        os.makedirs(final_dir, exist_ok=True)
+        model.save_pretrained(final_dir)
+        tokenizer.save_pretrained(final_dir)
+        
+        # Save metadata about which epoch was best
+        with open(os.path.join(final_dir, "best_checkpoint_info.txt"), "w") as f:
+            f.write(f"Best checkpoint from Epoch {best_epoch}\n")
+            f.write(f"Validation Loss: {val_loss:.4f}\n")
+            f.write(f"Validation Perplexity: {val_ppl:.2f}\n")
+        
+        print(f"✓ New best model saved to {final_dir} (Epoch {best_epoch}, PPL: {val_ppl:.2f})")
+    else:
+        print(f"  No improvement (best PPL: {best_ppl:.2f} from Epoch {best_epoch})")
 
-# ================== 9️⃣ Save final model ==================
-final_dir = os.path.join(save_dir, "final")
-os.makedirs(final_dir, exist_ok=True)
-model.save_pretrained(final_dir)
-tokenizer.save_pretrained(final_dir)
+# ================== 9️⃣ Training complete ==================
 print(f"\n{'='*50}")
 print(f"Training complete!")
-print(f"Final model saved to '{final_dir}'")
-print(f"Best validation perplexity: {best_ppl:.2f}")
+print(f"Best model saved to '{os.path.join(save_dir, 'final')}'")
+print(f"Best validation perplexity: {best_ppl:.2f} (Epoch {best_epoch})")
 print(f"{'='*50}\n")
 
 # ================== 🔟 Test generation ==================
