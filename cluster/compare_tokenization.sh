@@ -31,9 +31,9 @@ echo "Running python experiment..."
 
 # === 4. RUN YOUR PYTHON SCRIPT ===
 python evaluation/compare_tokenization.py \
-    --dataset eusreading \
-    --results1 results/eusreading_latxa_original_5shot.jsonl \
-    --results2 results/eusreading_latxa_dynamic_5shot.jsonl \
-    --output comparison_eusreading_original_vs_dynamic.json
+    --dataset eusproficiency \
+    --results1 results/eusproficiency_latxa_original_5shot.jsonl \
+    --results2 results/eusproficiency_latxa_dynamic_5shot.jsonl \
+    --output comparison_eusproficiency_original_vs_dynamic.json
 
 echo "Job finished."
