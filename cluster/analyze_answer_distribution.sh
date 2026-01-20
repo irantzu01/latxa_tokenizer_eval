@@ -31,9 +31,7 @@ echo "Running python experiment..."
 
 # === 4. RUN YOUR PYTHON SCRIPT ===
 python evaluation/analyze_answer_distribution.py \
-    results/belebele_latxa_original_5shot.jsonl \
-    results/belebele_latxa_dynamic_5shot.jsonl \
-    results/belebele_latxa_basque_tokenizer_5shot.jsonl \
-    results/belebele_latxa_basque_focus_5shot.jsonl \
+    results/eusproficiency_latxa_basque_tokenizer_improved_5shot.jsonl \
+    results/eusproficiency_latxa_basque_focus_improved_5shot.jsonl
 
 echo "Job finished."
