@@ -35,7 +35,7 @@ echo "Running python experiment..."
 # python evaluation/debug_answer_scoring.py --model latxa_basque_tokenizer
 # python evaluation/debug_answer_scoring.py --model latxa_basque_focus
 # Debug a single example with both models
-python debug_answer_scoring.py --model latxa_basque_tokenizer_improved --example-id 0
-python debug_answer_scoring.py --model latxa_basque_focus_improved --example-id 0
+python evaluation/debug_answer_scoring.py --model latxa_basque_tokenizer_improved --example-id 0
+python evaluation/debug_answer_scoring.py --model latxa_basque_focus_improved --example-id 0
 
 echo "Job finished."
