@@ -30,9 +30,12 @@ cd ~/MASTER/WiSe25/Lab\ Rotation/latxa_tokenizer_eval
 echo "Running python experiment..."
 
 # === 4. RUN YOUR PYTHON SCRIPT ===
-python evaluation/debug_answer_scoring.py --model latxa_original
-python evaluation/debug_answer_scoring.py --model latxa_dynamic
-python evaluation/debug_answer_scoring.py --model latxa_basque_tokenizer
-python evaluation/debug_answer_scoring.py --model latxa_basque_focus
+# python evaluation/debug_answer_scoring.py --model latxa_original
+# python evaluation/debug_answer_scoring.py --model latxa_dynamic
+# python evaluation/debug_answer_scoring.py --model latxa_basque_tokenizer
+# python evaluation/debug_answer_scoring.py --model latxa_basque_focus
+# Debug a single example with both models
+python debug_answer_scoring.py --model latxa_basque_tokenizer_improved --example-id 0
+python debug_answer_scoring.py --model latxa_basque_focus_improved --example-id 0
 
 echo "Job finished."

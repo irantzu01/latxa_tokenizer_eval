@@ -34,6 +34,14 @@ MODELS = {
         "path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_FOCUS/final"),
         "tokenizer_path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_FOCUS/final"),
     },
+    "latxa_basque_tokenizer_improved": {
+        "path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_improved/final"),
+        "tokenizer_path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_improved/final"),
+    },
+    "latxa_basque_focus_improved": {
+        "path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_FOCUS_improved/final"),
+        "tokenizer_path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_FOCUS_improved/final"),
+    },
 }
 
 letters = ["A", "B", "C", "D"]
