@@ -30,6 +30,6 @@ cd ~/MASTER/WiSe25/Lab\ Rotation/latxa_tokenizer_eval
 echo "Running python experiment..."
 
 # === 4. RUN YOUR PYTHON SCRIPT ===
-python evaluation/evaluate_basglue.py --model latxa_basque_focus
+python evaluation/evaluate_basglue.py --model latxa_basque_focus_improved
 
 echo "Job finished."

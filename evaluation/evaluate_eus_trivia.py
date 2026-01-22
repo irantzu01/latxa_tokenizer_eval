@@ -54,6 +54,18 @@ MODELS = {
         "use_dynamic": False,
         "description": "Latxa 7B + Basque Tokenizer + FOCUS"
     },
+    "latxa_basque_tokenizer_improved": {
+        "path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_improved/final"),
+        "tokenizer_path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_improved/final"),
+        "use_dynamic": False,
+        "description": "Latxa 7B + Basque Tokenizer (250k)"
+    },
+    "latxa_basque_focus_improved": {
+        "path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_FOCUS_improved/final"),
+        "tokenizer_path": os.path.expanduser("~/tmp/models/latxa7b_basque_aligned_250k_FOCUS_improved/final"),
+        "use_dynamic": False,
+        "description": "Latxa 7B + Basque Tokenizer + FOCUS"
+    },
 }
 
 seed = 42
