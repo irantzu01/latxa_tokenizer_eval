@@ -33,9 +33,9 @@ echo "Running python experiment..."
 python evaluation/analyze_answer_distribution.py \
     results/belebele_latxa_basque_focus_improved_5shot.jsonl \
     results/belebele_latxa_basque_tokenizer_improved_5shot.jsonl \
-    results/eusreading_latxa_basque_focus_improved_5shot.jsonl \
-    results/eusreading_latxa_basque_tokenizer_improved_5shot.jsonl \
-    results/eustrivia_latxa_basque_focus_improved_5shot.jsonl \
-    results/eustrivia_latxa_basque_tokenizer_improved_5shot.jsonl
+    #results/eusreading_latxa_basque_focus_improved_5shot.jsonl \
+    #results/eusreading_latxa_basque_tokenizer_improved_5shot.jsonl \
+    #results/eustrivia_latxa_basque_focus_improved_5shot.jsonl \
+    #results/eustrivia_latxa_basque_tokenizer_improved_5shot.jsonl
 
 echo "Job finished."
