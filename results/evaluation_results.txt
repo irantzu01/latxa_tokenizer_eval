@@ -1,0 +1,157 @@
+Evaluation results
+
+EusProficiency;
+Random: 0.25
+Llama 2 accuracy (reported): 0.2409
+Latxa accuracy (reported): 0.3026
+Latxa accuracy (obtained): 0.2985 (1543/5169)
+Latxa + Dynamic tokenization: 0.2420 (1251/5169)
+Latxa + new tokenizer: 0.2519 (1302/5169)
+Latxa + new tokenizer + FOCUS: 0.2529 (1307/5169)
+
+EusReading;
+Rnadom: 0.25
+Llama 2 accuracy (reported): 0.2727
+Latxa accuracy (reported): 0.25
+Latxa accuracy (obtained): 0.2472 (87/352)
+Latxa + Dynamic tokenization: 0.2301 (81/352)
+Latxa + new tokenizer: 0.2983 (105/352)
+Latxa + new tokenizer + FOCUS: 0.2841 (100/352)
+
+Eusreading correct:
+Latxa accuracy (obtained): 0.2500 (88/352)
+Latxa + Dynamic tokenization: 0.2443 (86/352)
+Latxa + new tokenizer: 0.2756 (97/352)
+Latxa + new tokenizer + FOCUS: 0.2330 (82/352)
+
+EusTrivia;
+Random: 0.2655
+Llama 2 accuracy (reported): 0.2950
+Latxa accuracy (reported): 0.4216
+Latxa accuracy (obtained): 0.4157 (713/1715)
+Latxa + Dynamic tokenization: 0.2863 (491/1715)
+Latxa + new tokenizer: 0.2694 (462/1715)
+Latxa + new tokenizer + FOCUS: 0.2810 (482/1715)
+
+EusExams:
+Random: 0.2583
+Llama 2 accuracy (reported): 0.2884
+Latxa accuracy (reported): 0.3382
+Latxa accuracy (obtained): 0.3272 (5145/15724)
+Latxa + Dynamic tokenization: 0.2448 (3849/15724)
+Latxa + new tokenizer: 0.2537 (3989/15724)
+Latxa + new tokenizer + FOCUS: 0.2671 (4200/15724)
+
+BeleBele:
+Random: 0.25
+Llama 2 accuracy (reported): 0.2622
+Latxa accuracy (reported): 0.3733
+Latxa accuracy (obtained): 0.3389 (305/900)
+Latxa + Dynamic tokenization: 0.2711 (244/900)
+Latxa + new tokenizer:  0.2744 (247/900)
+Latxa + new tokenizer + FOCUS: 0.2644 (238/900)
+
+BasGLUE:
+Random avg: 0.3750
+
+Model      bec        bhtc       coref        qnli        vaxx         wic         Avg
+----------------------------------------------------------------------------------------
+Llama2 7B 0.4163      0.1860      0.2006      0.5094      0.4832      0.4964      0.3820
+Latxa r   0.5730      0.4565      0.5744      0.4950      0.5420      0.5128      0.5256
+Latxa o   0.4324      0.2217      0.5043      0.5336      0.0225      0.5029      
+Dyn Tok   0.3633      0.0291      0.5077      0.4958      0.0108      0.4986
+Bas Tok   0.3633      0.1294      0.4940      0.4958      0.2143      0.5000
+FOCUS     0.4493      0.1645      0.4719      0.5588      0.4721      0.5021
+
+RESULTS SUMMARY: Original Latxa 7B
+================================================================================
+       bec: 0.4324 (Micro F1 Score)
+      bhtc: 0.2217 (Micro F1 Score)
+     coref: 0.5043 (Accuracy Score)
+      qnli: 0.5336 (Accuracy Score)
+      vaxx: 0.0225 (Vaxx F1 Score)
+       wic: 0.5029 (Accuracy Score)
+
+RESULTS SUMMARY: Latxa 7B + Dynamic Tokenization
+================================================================================
+       bec: 0.3648 (Micro F1 Score)
+      bhtc: 0.0189 (Micro F1 Score)
+     coref: 0.5128 (Accuracy Score)
+      qnli: 0.5000 (Accuracy Score)
+      vaxx: 0.0000 (Vaxx F1 Score)
+       wic: 0.5000 (Accuracy Score)
+
+RESULTS SUMMARY: Latxa 7B + Basque Tokenizer (250k)
+================================================================================
+       bec: 0.3641 (Micro F1 Score)
+      bhtc: 0.1375 (Micro F1 Score)
+     coref: 0.4974 (Accuracy Score)
+      qnli: 0.5042 (Accuracy Score)
+      vaxx: 0.2088 (Vaxx F1 Score)
+       wic: 0.5000 (Accuracy Score)
+
+RESULTS SUMMARY: Latxa 7B + Basque Tokenizer + FOCUS
+================================================================================
+       bec: 0.4585 (Micro F1 Score)
+      bhtc: 0.1602 (Micro F1 Score)
+     coref: 0.4855 (Accuracy Score)
+      qnli: 0.5336 (Accuracy Score)
+      vaxx: 0.4663 (Vaxx F1 Score)
+       wic: 0.5157 (Accuracy Score)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+====================================================================================================
+PREDICTION DISTRIBUTION ANALYSIS
+====================================================================================================
+
+DATASET: EusProficiency
+
+Model                              Total            A         B         C         D
+----------------------------------------------------------------------------------------------------
+GOLD DISTRIBUTION                  5169         23.8%     25.3%     26.2%     24.6%
+
+latxa_original                     5169         21.3%     36.0%     24.3%     18.4%
+latxa_dynamic                      5169         47.9%     36.9%      0.2%     15.0%
+latxa_basque_tokenizer             5169          6.4%     92.3%      0.7%      0.6%
+latxa_basque_focus                 5169          3.6%     84.3%      0.1%     12.0%
+
+
+DATASET: EusTrivia
+
+Model                              Total            A         B         C         D
+----------------------------------------------------------------------------------------------------
+GOLD DISTRIBUTION                  1715         29.1%     27.5%     24.0%     19.4%
+
+latxa_original                     1715         16.0%     20.3%     30.4%     33.4%
+latxa_dynamic                      1715         53.8%     19.0%     14.9%     12.2%
+latxa_basque_tokenizer             1715         10.3%     63.7%     10.4%     15.6%
+latxa_basque_focus                 1715          1.0%     83.4%      0.2%     15.4%
+
+
+DATASET: BeleBele
+
+Model                              Total            A         B         C         D
+----------------------------------------------------------------------------------------------------
+GOLD DISTRIBUTION                  900          22.9%     27.9%     27.3%     21.9%
+
+latxa_original                     900           9.0%      8.6%     52.1%     30.3%
+latxa_dynamic                      900          18.7%     81.0%      0.3%      0.0%
+latxa_basque_tokenizer             900           0.1%     94.4%      0.1%      5.3%
+latxa_basque_focus                 900           0.0%     84.0%      0.0%     16.0%

@@ -1,0 +1,35 @@
+Evaluation results after retraining:
+
+EusProficiency;
+latxa_basque_tokenizer: 0.2563 (1325/5169)
+latxa_basque_focus: 0.2538 (1312/5169)
+
+BeleBele;
+latxa_basque_tokenizer: 0.2778 (250/900)
+latxa_basque_focus: 0.2733 (246/900)
+
+EusTrivia;
+latxa_basque_tokenizer: 0.2723 (467/1715)
+latxa_basque_focus: 0.2980 (511/1715)
+
+EusReading;
+latxa_basque_tokenizer: 0.2812 (99/352)
+latxa_basque_focus: 0.2443 (86/352)
+
+EusExams;
+latxa_basque_tokenizer: 0.2606 (4097/15724)
+latxa_basque_focus: 0.2541 (3995/15724)
+
+BasGLUE;
+latxa_basque_tokenizer: bec: 0.3241 (Micro F1 Score)
+      bhtc: 0.0939 (Micro F1 Score)
+     coref: 0.5060 (Accuracy Score)
+      qnli: 0.5420 (Accuracy Score)
+      vaxx: 0.4612 (Vaxx F1 Score)
+       wic: 0.4979 (Accuracy Score)
+latxa_basque_focus: bec: 0.3656 (Micro F1 Score)
+      bhtc: 0.2066 (Micro F1 Score)
+     coref: 0.4872 (Accuracy Score)
+      qnli: 0.5168 (Accuracy Score)
+      vaxx: 0.4737 (Vaxx F1 Score)
+       wic: 0.5164 (Accuracy Score)
