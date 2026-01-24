@@ -31,6 +31,6 @@ echo "Running python experiment..."
 
 # === 4. RUN YOUR PYTHON SCRIPT ===
 # Basic usage (creates input_cleaned.json)
-python clean_comparison.py comparison_eusproficiency_original_vs_basque_tokenizer_improved.json --output cleaned_comparison_eusproficiency_original_vs_basque_tokenizer_improved.json
+python clean_comparison.py comparison_eusproficiency_original_vs_basque_focus_improved.json --output cleaned_comparison_eusproficiency_original_vs_basque_focus_improved.json
 
 echo "Job finished."
