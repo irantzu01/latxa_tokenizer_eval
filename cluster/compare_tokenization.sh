@@ -39,7 +39,7 @@ echo "Running python experiment..."
 python evaluation/compare_tokenization.py \
     --dataset eusproficiency \
     --results1 results/eusproficiency_latxa_original_5shot.jsonl \
-    --results2 results/eusproficiency_latxa_basque_tokenizer_improved_5shot.jsonl \
-    --output comparison_eusproficiency_original_vs_basque_tokenizer_improved.json
+    --results2 results/eusproficiency_latxa_basque_focus_improved_5shot.jsonl \
+    --output comparison_eusproficiency_original_vs_basque_focus_improved.json
 
 echo "Job finished."
