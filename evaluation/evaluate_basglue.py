@@ -190,18 +190,26 @@ def evaluate_static_model(model, tokenizer, dataset, task, device='cuda'):
         
         prompt_ids = tokenizer.encode(prompt_text, add_special_tokens=False)
         
+        # Build sequences for each possible answer
         full_ids = []
         for answer in possible_answers:
+            # For BHTC and other multi-class: use the full label text
             answer_text = " " + answer
             answer_ids = tokenizer.encode(answer_text, add_special_tokens=False)
             full_ids.append(prompt_ids + answer_ids)
         
-        input_ids, attention_mask = build_batch_tensors(full_ids, pad_id, device)
+        # Score each choice ONE AT A TIME to avoid OOM with 12 classes
+        scores_list = []
+        for seq_ids in full_ids:
+            input_ids_tensor = torch.tensor([seq_ids], dtype=torch.long, device=device)
+            attention_mask_tensor = torch.ones_like(input_ids_tensor)
+            
+            with torch.no_grad():
+                score = score_choices(model, input_ids_tensor, attention_mask_tensor)
+            scores_list.append(score.item())
+            torch.cuda.empty_cache()
         
-        # CRITICAL: Use torch.no_grad() for inference
-        with torch.no_grad():
-            scores = score_choices(model, input_ids, attention_mask)
-        
+        scores = torch.tensor(scores_list)
         pred_idx = torch.argmax(scores).item()
         gold_idx = item["label"]
         
@@ -242,19 +250,27 @@ def evaluate_dynamic_model(model, tokenizer, augmenter, dynamic_bpe, dataset, ta
         prompt_tokens = dynamic_tokenize_texts([prompt_text], dynamic_bpe, max_merges=10)[0]
         prompt_ids = augmenter.tokens_to_ids([prompt_tokens])[0]
         
+        # Build sequences for each possible answer
         full_ids = []
         for answer in possible_answers:
+            # For BHTC and other multi-class: use the full label text
             answer_text = " " + answer
             answer_tokens = dynamic_tokenize_texts([answer_text], dynamic_bpe, max_merges=10)[0]
             answer_ids = augmenter.tokens_to_ids([answer_tokens])[0]
             full_ids.append(prompt_ids + answer_ids)
         
-        input_ids, attention_mask = build_batch_tensors(full_ids, pad_id, device)
+        # Score each choice ONE AT A TIME to avoid OOM with 12 classes
+        scores_list = []
+        for seq_ids in full_ids:
+            input_ids_tensor = torch.tensor([seq_ids], dtype=torch.long, device=device)
+            attention_mask_tensor = torch.ones_like(input_ids_tensor)
+            
+            with torch.no_grad():
+                score = score_choices(model, input_ids_tensor, attention_mask_tensor)
+            scores_list.append(score.item())
+            torch.cuda.empty_cache()
         
-        # CRITICAL: Use torch.no_grad() for inference
-        with torch.no_grad():
-            scores = score_choices(model, input_ids, attention_mask)
-        
+        scores = torch.tensor(scores_list)
         pred_idx = torch.argmax(scores).item()
         gold_idx = item["label"]
         
