@@ -30,10 +30,16 @@ cd ~/MASTER/WiSe25/Lab\ Rotation/latxa_tokenizer_eval
 echo "Running python experiment..."
 
 # === 4. RUN YOUR PYTHON SCRIPT ===
+# python evaluation/compare_tokenization.py \
+#     --dataset eusproficiency \
+#     --results1 results/eusproficiency_latxa_original_5shot.jsonl \
+#     --results2 results/eusproficiency_latxa_dynamic_5shot.jsonl \
+#     --output comparison_eusproficiency_original_vs_dynamic.json
+
 python evaluation/compare_tokenization.py \
     --dataset eusproficiency \
     --results1 results/eusproficiency_latxa_original_5shot.jsonl \
-    --results2 results/eusproficiency_latxa_dynamic_5shot.jsonl \
-    --output comparison_eusproficiency_original_vs_dynamic.json
+    --results2 results/eusproficiency_latxa_basque_tokenizer_improved_5shot.jsonl \
+    --output comparison_eusproficiency_original_vs_basque_tokenizer_improved.json
 
 echo "Job finished."
